@@ -282,6 +282,23 @@ async function runHttpServer(port: number): Promise<void> {
       };
       const mcpServer = buildMcpSession();
       await mcpServer.connect(transport);
+
+      const ls = mcpServer.server;
+      ls.oninitialized = () => {
+        markInitialized();
+        // eslint-disable-next-line no-void
+        void (async () => {
+          try {
+            const clientCaps = ls.getClientCapabilities?.() ?? {};
+            hooksService.start(ls, { sampling: clientCaps.sampling != null });
+            await mcpLog('info', 'server', 'Email MCP server ready (HTTP mode)');
+          } catch (err) {
+            process.stderr.write(
+              `[email-mcp] hooks init error: ${err instanceof Error ? err.message : String(err)}\n`,
+            );
+          }
+        })();
+      };
     } else {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(
