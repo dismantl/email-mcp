@@ -40,7 +40,7 @@ jobs:
       packages: write
     with:
       images: |
-        ghcr.io/codefuturist/email-mcp
+        ghcr.io/dismantl/email-mcp
         diarmid/email-mcp
       tags: |
         type=semver,pattern={{version}},value=v${{ needs.prepare.outputs.version }}
