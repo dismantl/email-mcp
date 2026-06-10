@@ -165,6 +165,7 @@ export interface Mailbox {
 
 export interface EmailMeta {
   id: string;
+  uidValidity?: string;
   subject: string;
   from: EmailAddress;
   to: EmailAddress[];

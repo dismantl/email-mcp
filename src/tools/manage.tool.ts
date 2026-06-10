@@ -25,17 +25,21 @@ export default function registerManageTools(server: McpServer, imapService: Imap
       destinationMailbox: z
         .string()
         .describe('Target mailbox (e.g., Archive). Use list_mailboxes to see options.'),
+      uidValidity: z
+        .union([z.string().min(1), z.number()])
+        .transform((value) => value.toString())
+        .describe('Mailbox UIDVALIDITY captured with the email UID'),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    async ({ account, emailId, sourceMailbox, destinationMailbox }) => {
+    async ({ account, emailId, sourceMailbox, destinationMailbox, uidValidity }) => {
       try {
         const cleanSource = sanitizeMailboxName(sourceMailbox);
         const cleanDest = sanitizeMailboxName(destinationMailbox);
-        await imapService.moveEmail(account, emailId, cleanSource, cleanDest);
+        await imapService.moveEmail(account, emailId, cleanSource, cleanDest, uidValidity);
         await audit.log(
           'move_email',
           account,
-          { emailId, sourceMailbox, destinationMailbox },
+          { emailId, sourceMailbox, destinationMailbox, uidValidity },
           'ok',
         );
         return {
@@ -51,7 +55,7 @@ export default function registerManageTools(server: McpServer, imapService: Imap
         await audit.log(
           'move_email',
           account,
-          { emailId, sourceMailbox, destinationMailbox },
+          { emailId, sourceMailbox, destinationMailbox, uidValidity },
           'error',
           errMsg,
         );

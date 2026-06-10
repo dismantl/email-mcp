@@ -76,6 +76,10 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID to reply to (from list_emails or get_email)'),
+      uidValidity: z
+        .union([z.string().min(1), z.number()])
+        .transform((value) => value.toString())
+        .describe('Mailbox UIDVALIDITY captured with the email UID'),
       mailbox: z.string().default('INBOX').describe('Mailbox where the original email is'),
       body: z.string().describe('Reply body content'),
       replyAll: z.boolean().default(false).describe('Reply to all recipients'),
@@ -88,7 +92,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'reply_email',
           params.account,
-          { emailId: params.emailId, mailbox: params.mailbox },
+          { emailId: params.emailId, mailbox: params.mailbox, uidValidity: params.uidValidity },
           'ok',
         );
         return {
@@ -104,7 +108,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'reply_email',
           params.account,
-          { emailId: params.emailId, mailbox: params.mailbox },
+          { emailId: params.emailId, mailbox: params.mailbox, uidValidity: params.uidValidity },
           'error',
           errMsg,
         );

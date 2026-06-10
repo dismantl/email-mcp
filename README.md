@@ -663,6 +663,10 @@ Features:
 | `get_email_stats` | Email analytics — volume, top senders, daily trends |
 | `check_health` | Connection health, latency, quota, and IMAP capabilities |
 
+`list_emails`, `search_emails`, `get_email`, and `get_emails` include the mailbox
+`UIDVALIDITY` for each UID. Pass the matching `uidValidity` to `move_email` and
+`reply_email` so stale IMAP UIDs are rejected if a mailbox is rebuilt.
+
 #### Write (9)
 
 | Tool | Description |

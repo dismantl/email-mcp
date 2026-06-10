@@ -30,10 +30,11 @@ function formatEmailMeta(email: EmailMeta): string {
 
   const from = email.from.name ? `${email.from.name} <${email.from.address}>` : email.from.address;
   const labelStr = email.labels.length > 0 ? `\n  🏷️ ${email.labels.join(', ')}` : '';
+  const uidValidityLine = email.uidValidity ? `\n  UIDVALIDITY: ${email.uidValidity}` : '';
 
   return (
     `[${email.id}] ${flags} ${email.subject}\n` +
-    `  From: ${from} | ${email.date}\n` +
+    `  From: ${from} | ${email.date}${uidValidityLine}\n` +
     `  Message-ID: ${email.messageId}\n` +
     `  Thread-ID: ${email.threadId}` +
     `${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`
@@ -241,7 +242,10 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
         }
 
         parts.push(`Date:   ${email.date}`);
-        parts.push(`ID:     ${email.messageId}`);
+        parts.push(`Mailbox: ${mailbox}`);
+        parts.push(`UID:    ${emailId}`);
+        parts.push(`UIDVALIDITY: ${email.uidValidity ?? '(unknown)'}`);
+        parts.push(`Message-ID: ${email.messageId}`);
         parts.push(`Thread: ${email.threadId}`);
 
         if (email.inReplyTo) {
@@ -345,6 +349,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
             `Status: ${formatEmailStatus(email)}`,
             `From:   ${from}`,
             `Date:   ${email.date}`,
+            `UIDVALIDITY: ${email.uidValidity ?? '(unknown)'}`,
             `Message-ID: ${email.messageId}`,
             `Thread-ID: ${email.threadId}`,
           ];

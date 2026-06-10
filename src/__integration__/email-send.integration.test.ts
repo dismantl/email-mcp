@@ -96,11 +96,14 @@ describe('Email Send Operations', () => {
       });
       expect(list.items.length).toBeGreaterThanOrEqual(1);
 
-      const emailId = list.items[0].id;
+      const email = list.items[0];
+      const emailId = email.id;
+      expect(email.uidValidity).toBeDefined();
 
       // Reply
       const reply = await services.smtpService.replyToEmail(TEST_ACCOUNT_NAME, {
         emailId,
+        uidValidity: email.uidValidity ?? '',
         body: 'This is my reply.',
       });
 

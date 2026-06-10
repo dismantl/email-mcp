@@ -10,6 +10,7 @@ function createMockImapClient() {
   return {
     usable: true,
     getMailboxLock: vi.fn().mockResolvedValue({ release: releaseFn }),
+    mailbox: { uidValidity: 12345n },
     list: vi.fn().mockResolvedValue([]),
     status: vi.fn().mockResolvedValue({ messages: 5, unseen: 2 }),
     fetch: vi.fn().mockReturnValue((async function* fetchMock() {})()),
@@ -216,6 +217,83 @@ describe('ImapService', () => {
   });
 
   // -----------------------------------------------------------------------
+  // UIDVALIDITY
+  // -----------------------------------------------------------------------
+
+  describe('UIDVALIDITY', () => {
+    it('includes selected mailbox UIDVALIDITY in listEmails results', async () => {
+      client.search.mockResolvedValue([2]);
+      client.fetch.mockReturnValue(
+        createFetchResults([
+          createMockMessage({
+            uid: 2,
+            messageId: '<message@example.com>',
+          }),
+        ]),
+      );
+
+      const result = await service.listEmails('test');
+
+      expect(result.items[0]).toMatchObject({
+        id: '2',
+        uidValidity: '12345',
+      });
+    });
+
+    it('includes selected mailbox UIDVALIDITY in searchEmails results', async () => {
+      client.search.mockResolvedValue([2]);
+      client.fetch.mockReturnValue(
+        createFetchResults([
+          createMockMessage({
+            uid: 2,
+            messageId: '<message@example.com>',
+          }),
+        ]),
+      );
+
+      const result = await service.searchEmails('test', 'message');
+
+      expect(result.items[0]).toMatchObject({
+        id: '2',
+        uidValidity: '12345',
+      });
+    });
+
+    it('includes selected mailbox UIDVALIDITY in getEmail results', async () => {
+      client.fetchOne.mockResolvedValue(
+        createMockMessage({
+          uid: 2,
+          messageId: '<message@example.com>',
+        }),
+      );
+
+      const email = await service.getEmail('test', '2');
+
+      expect(email.uidValidity).toBe('12345');
+    });
+
+    it('rejects getEmail when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.getEmail('test', '2', 'INBOX', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.fetchOne).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects moveEmail when the expected UIDVALIDITY is stale', async () => {
+      client.list.mockResolvedValue([{ name: 'INBOX', path: 'INBOX', specialUse: '\\Inbox' }]);
+
+      await expect(service.moveEmail('test', '42', 'INBOX', 'Archive', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.messageMove).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // moveEmail
   // -----------------------------------------------------------------------
 
@@ -224,7 +302,7 @@ describe('ImapService', () => {
       // assertRealMailbox calls client.list() internally
       client.list.mockResolvedValue([{ name: 'INBOX', path: 'INBOX', specialUse: '\\Inbox' }]);
 
-      await service.moveEmail('test', '42', 'INBOX', 'Archive');
+      await service.moveEmail('test', '42', 'INBOX', 'Archive', '12345');
 
       expect(client.getMailboxLock).toHaveBeenCalledWith('INBOX');
       expect(client.messageMove).toHaveBeenCalledWith('42', 'Archive', { uid: true });
@@ -235,7 +313,7 @@ describe('ImapService', () => {
       client.list.mockResolvedValue([]);
 
       // Passing valid names — sanitize should pass them through without error
-      await service.moveEmail('test', '1', 'INBOX', 'Sent');
+      await service.moveEmail('test', '1', 'INBOX', 'Sent', '12345');
 
       expect(client.messageMove).toHaveBeenCalledWith('1', 'Sent', { uid: true });
     });

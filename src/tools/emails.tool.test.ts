@@ -23,6 +23,7 @@ function getHandler(server: ReturnType<typeof createServer>, name: string): Tool
 function createEmailMeta(overrides: Partial<EmailMeta> = {}): EmailMeta {
   return {
     id: '2',
+    uidValidity: '12345',
     subject: 'Thread update',
     from: { name: 'Sender', address: 'sender@example.com' },
     to: [{ name: 'Recipient', address: 'recipient@example.com' }],
@@ -81,6 +82,34 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('Thread-ID: <root@example.com>');
   });
 
+  it('renders UIDVALIDITY in list_emails output', async () => {
+    const server = createServer();
+    const result: PaginatedResult<EmailMeta> = {
+      items: [createEmailMeta()],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    };
+    const imapService = {
+      listEmails: vi.fn().mockResolvedValue(result),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'list_emails',
+    )({
+      account: 'test',
+      mailbox: 'INBOX',
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
+  });
+
   it('renders thread id and references in get_email output', async () => {
     const server = createServer();
     const imapService = {
@@ -102,6 +131,9 @@ describe('registerEmailsTools', () => {
 
     expect(response.content[0].text).toContain('Thread: <root@example.com>');
     expect(response.content[0].text).toContain('Refs:   <root@example.com> <parent@example.com>');
+    expect(response.content[0].text).toContain('Mailbox: INBOX');
+    expect(response.content[0].text).toContain('UID:    2');
+    expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
   it('renders thread id and references in get_emails output', async () => {
@@ -123,6 +155,7 @@ describe('registerEmailsTools', () => {
     });
 
     expect(response.content[0].text).toContain('Thread-ID: <root@example.com>');
+    expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
     expect(response.content[0].text).toContain(
       'References: <root@example.com> <parent@example.com>',
     );

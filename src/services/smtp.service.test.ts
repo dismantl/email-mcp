@@ -37,8 +37,31 @@ function createMockRateLimiter(allowed = true) {
   } as unknown as RateLimiter;
 }
 
+function createMockEmail() {
+  return {
+    id: '42',
+    uidValidity: '12345',
+    subject: 'Original subject',
+    from: { name: 'Sender', address: 'sender@example.com' },
+    to: [{ name: 'Test User', address: 'test@example.com' }],
+    date: '2026-06-10T12:00:00.000Z',
+    messageId: '<original@example.com>',
+    threadId: '<original@example.com>',
+    seen: true,
+    flagged: false,
+    answered: false,
+    hasAttachments: false,
+    labels: [],
+    bodyText: 'Original body',
+    attachments: [],
+    headers: {},
+  };
+}
+
 function createMockImapService() {
-  return {} as unknown as ImapService;
+  return {
+    getEmail: vi.fn().mockResolvedValue(createMockEmail()),
+  } as unknown as ImapService;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +146,29 @@ describe('SmtpService', () => {
       const call = transport.sendMail.mock.calls[0][0];
       expect(call.html).toBe('<h1>Hello</h1>');
       expect(call.text).toBeUndefined();
+    });
+  });
+
+  describe('replyToEmail', () => {
+    it('passes UIDVALIDITY when fetching the original message', async () => {
+      const imapService = createMockImapService();
+      service = new SmtpService(connections, rateLimiter, imapService);
+
+      await service.replyToEmail('test', {
+        emailId: '42',
+        uidValidity: '12345',
+        mailbox: 'INBOX',
+        body: 'Thanks',
+      });
+
+      expect(imapService.getEmail).toHaveBeenCalledWith('test', '42', 'INBOX', '12345');
+      expect(transport.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'sender@example.com',
+          subject: 'Re: Original subject',
+          inReplyTo: '<original@example.com>',
+        }),
+      );
     });
   });
 });

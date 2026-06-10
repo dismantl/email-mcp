@@ -156,7 +156,19 @@ function findMimePartByFilename(
   return undefined;
 }
 
-function messageToEmailMeta(msg: Record<string, unknown>): EmailMeta {
+function normalizeUidValidity(
+  uidValidity: bigint | number | string | null | undefined,
+): string | undefined {
+  if (uidValidity === undefined || uidValidity === null) {
+    return undefined;
+  }
+  return String(uidValidity);
+}
+
+function messageToEmailMeta(
+  msg: Record<string, unknown>,
+  uidValidity?: bigint | number | string,
+): EmailMeta {
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
   const flags = new Set((msg.flags ?? []) as string[]);
   const threadFields = getThreadFields(msg);
@@ -180,6 +192,7 @@ function messageToEmailMeta(msg: Record<string, unknown>): EmailMeta {
 
   return {
     id: String(msg.uid ?? msg.seq),
+    uidValidity: normalizeUidValidity(uidValidity),
     subject: (envelope.subject as string) ?? '(no subject)',
     from: parseAddress((envelope.from as Record<string, string>[])?.[0]),
     to: parseAddresses(envelope.to as Record<string, string>[]),
@@ -200,8 +213,9 @@ async function messageToEmail(
   msg: Record<string, unknown>,
   client: ImapFlow,
   uid: number,
+  uidValidity?: bigint | number | string,
 ): Promise<Email> {
-  const meta = messageToEmailMeta(msg);
+  const meta = messageToEmailMeta(msg, uidValidity);
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
   const headers = parseMessageHeaders(msg);
 
@@ -260,6 +274,34 @@ export default class ImapService {
   private labelStrategyPending = new Map<string, Promise<LabelStrategy>>();
 
   constructor(private connections: IConnectionManager) {}
+
+  private static currentMailboxUidValidity(client: ImapFlow, mailbox: string): string {
+    const actual = client.mailbox ? client.mailbox.uidValidity : undefined;
+    const normalized = normalizeUidValidity(actual);
+    if (normalized === undefined) {
+      throw new Error(`Mailbox "${mailbox}" did not expose UIDVALIDITY.`);
+    }
+    return normalized;
+  }
+
+  private static assertMailboxUidValidity(
+    client: ImapFlow,
+    mailbox: string,
+    expectedUidValidity: bigint | number | string,
+  ): string {
+    const expected = normalizeUidValidity(expectedUidValidity);
+    if (expected === undefined || expected.length === 0) {
+      throw new Error(`UIDVALIDITY is required for mailbox "${mailbox}".`);
+    }
+
+    const actual = ImapService.currentMailboxUidValidity(client, mailbox);
+    if (actual !== expected) {
+      throw new Error(
+        `UIDVALIDITY mismatch for mailbox "${mailbox}": expected ${expected}, got ${actual}.`,
+      );
+    }
+    return actual;
+  }
 
   private async getLabelStrategy(accountName: string): Promise<LabelStrategy> {
     const cached = this.labelStrategies.get(accountName);
@@ -348,6 +390,8 @@ export default class ImapService {
 
     const lock = await client.getMailboxLock(mailbox);
     try {
+      const uidValidity = ImapService.currentMailboxUidValidity(client, mailbox);
+
       // Build search criteria
       const search: Record<string, unknown> = {};
       if (options.since) search.since = new Date(options.since);
@@ -421,7 +465,7 @@ export default class ImapService {
         },
         { uid: true },
       )) {
-        items.push(messageToEmailMeta(msg as unknown as Record<string, unknown>));
+        items.push(messageToEmailMeta(msg as unknown as Record<string, unknown>, uidValidity));
       }
 
       // Sort by date descending
@@ -443,13 +487,23 @@ export default class ImapService {
   // Get single email
   // -------------------------------------------------------------------------
 
-  async getEmail(accountName: string, emailId: string, mailbox = 'INBOX'): Promise<Email> {
+  async getEmail(
+    accountName: string,
+    emailId: string,
+    mailbox = 'INBOX',
+    uidValidity?: bigint | number | string,
+  ): Promise<Email> {
     const client = await this.connections.getImapClient(accountName);
     const uid = parseInt(emailId, 10);
     const safeMailbox = sanitizeMailboxName(mailbox);
 
     const lock = await client.getMailboxLock(safeMailbox);
     try {
+      const currentUidValidity =
+        uidValidity === undefined
+          ? ImapService.currentMailboxUidValidity(client, safeMailbox)
+          : ImapService.assertMailboxUidValidity(client, safeMailbox, uidValidity);
+
       const msg = await client.fetchOne(
         String(uid),
         {
@@ -466,7 +520,12 @@ export default class ImapService {
         throw new Error(`Email ${emailId} not found in ${mailbox}`);
       }
 
-      return await messageToEmail(msg as unknown as Record<string, unknown>, client, uid);
+      return await messageToEmail(
+        msg as unknown as Record<string, unknown>,
+        client,
+        uid,
+        currentUidValidity,
+      );
     } finally {
       lock.release();
     }
@@ -556,6 +615,8 @@ export default class ImapService {
 
     const lock = await client.getMailboxLock(mailbox);
     try {
+      const uidValidity = ImapService.currentMailboxUidValidity(client, mailbox);
+
       // Build search criteria — base query OR across subject/from/body
       const baseCriteria: Record<string, unknown> = sanitizedQuery
         ? { or: [{ subject: sanitizedQuery }, { from: sanitizedQuery }, { body: sanitizedQuery }] }
@@ -648,7 +709,7 @@ export default class ImapService {
         },
         { uid: true },
       )) {
-        items.push(messageToEmailMeta(msg as unknown as Record<string, unknown>));
+        items.push(messageToEmailMeta(msg as unknown as Record<string, unknown>, uidValidity));
       }
 
       items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -812,6 +873,7 @@ export default class ImapService {
     emailId: string,
     sourceMailbox: string,
     destinationMailbox: string,
+    uidValidity: bigint | number | string,
   ): Promise<void> {
     const client = await this.connections.getImapClient(accountName);
     const safeSource = sanitizeMailboxName(sourceMailbox);
@@ -819,6 +881,7 @@ export default class ImapService {
     await ImapService.assertRealMailbox(client, safeSource);
     const lock = await client.getMailboxLock(safeSource);
     try {
+      ImapService.assertMailboxUidValidity(client, safeSource, uidValidity);
       const ok = await client.messageMove(emailId, safeDest, { uid: true });
       if (!ok) {
         throw new Error(`IMAP server rejected the move from "${safeSource}" to "${safeDest}".`);

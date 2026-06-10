@@ -109,9 +109,17 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Move test email',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
+      const emailId = email.id;
+      expect(email.uidValidity).toBeDefined();
 
-      await services.imapService.moveEmail(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'TestArchive');
+      await services.imapService.moveEmail(
+        TEST_ACCOUNT_NAME,
+        emailId,
+        'INBOX',
+        'TestArchive',
+        email.uidValidity ?? '',
+      );
 
       // Verify email is in destination
       const destList = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {

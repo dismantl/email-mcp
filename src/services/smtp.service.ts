@@ -59,6 +59,7 @@ export default class SmtpService {
     accountName: string,
     options: {
       emailId: string;
+      uidValidity: string;
       mailbox?: string;
       body: string;
       replyAll?: boolean;
@@ -68,7 +69,12 @@ export default class SmtpService {
     this.checkRateLimit(accountName);
 
     const account = this.connections.getAccount(accountName);
-    const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
+    const original = await this.imapService.getEmail(
+      accountName,
+      options.emailId,
+      options.mailbox,
+      options.uidValidity,
+    );
 
     // Build recipient list
     const to = [original.from.address];
