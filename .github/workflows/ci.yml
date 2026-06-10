@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -11,47 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type-check
-        run: pnpm typecheck
-
-      - name: Lint and format check
-        run: pnpm check
-
-      - name: Build
-        run: pnpm build
-
-      - name: Unit tests
-        run: pnpm test
-
-      - name: Integration tests
-        run: pnpm test:integration
-
-      - name: Docker build
-        run: docker build -t ghcr.io/${{ github.repository }}:ci .
+    uses: codefuturist/shared-workflows/.github/workflows/ci-node.yml@v1
+    with:
+      node-version: "24"
+      run-integration: true
+      integration-artifact-pattern: "reports/integration-*"
+      docker-smoke-test: true
+      docker-image: "codefuturist/email-mcp:ci"
