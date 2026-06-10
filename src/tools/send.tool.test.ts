@@ -75,4 +75,46 @@ describe('registerSendTools', () => {
       'ok',
     );
   });
+
+  it('requires UIDVALIDITY for forward_email and passes it to the SMTP service', async () => {
+    const server = createServer();
+    const smtpService = {
+      forwardEmail: vi
+        .fn()
+        .mockResolvedValue({ messageId: '<forward@example.com>', status: 'sent' }),
+    } as unknown as SmtpService;
+
+    registerSendTools(server, smtpService);
+
+    const schema = getToolCall(server, 'forward_email')[2] as Record<string, unknown>;
+    expect(schema).toHaveProperty('uidValidity');
+
+    const response = await getHandler(
+      server,
+      'forward_email',
+    )({
+      account: 'test',
+      emailId: '42',
+      uidValidity: '12345',
+      mailbox: 'INBOX',
+      to: ['recipient@example.com'],
+      body: 'FYI',
+    });
+
+    expect(response.isError).toBeUndefined();
+    expect(smtpService.forwardEmail).toHaveBeenCalledWith(
+      'test',
+      expect.objectContaining({
+        emailId: '42',
+        uidValidity: '12345',
+        mailbox: 'INBOX',
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      'forward_email',
+      'test',
+      { to: ['recipient@example.com'], emailId: '42', uidValidity: '12345' },
+      'ok',
+    );
+  });
 });

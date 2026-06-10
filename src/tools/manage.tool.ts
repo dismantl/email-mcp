@@ -9,6 +9,11 @@ import { sanitizeMailboxName } from '../safety/validation.js';
 
 import type ImapService from '../services/imap.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerManageTools(server: McpServer, imapService: ImapService): void {
   // ---------------------------------------------------------------------------
   // move_email
@@ -84,13 +89,19 @@ export default function registerManageTools(server: McpServer, imapService: Imap
       emailId: z.string().describe('Email ID to delete (from list_emails)'),
       mailbox: z.string().default('INBOX').describe('Mailbox containing the email'),
       permanent: z.boolean().default(false).describe('⚠️ Permanently delete (skip Trash)'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: false, destructiveHint: true },
-    async ({ account, emailId, mailbox, permanent }) => {
+    async ({ account, emailId, mailbox, permanent, uidValidity }) => {
       try {
         const cleanMailbox = sanitizeMailboxName(mailbox);
-        await imapService.deleteEmail(account, emailId, cleanMailbox, permanent);
-        await audit.log('delete_email', account, { emailId, mailbox, permanent }, 'ok');
+        await imapService.deleteEmail(account, emailId, cleanMailbox, permanent, uidValidity);
+        await audit.log(
+          'delete_email',
+          account,
+          { emailId, mailbox, permanent, uidValidity },
+          'ok',
+        );
         return {
           content: [
             {
@@ -101,7 +112,13 @@ export default function registerManageTools(server: McpServer, imapService: Imap
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        await audit.log('delete_email', account, { emailId, mailbox, permanent }, 'error', errMsg);
+        await audit.log(
+          'delete_email',
+          account,
+          { emailId, mailbox, permanent, uidValidity },
+          'error',
+          errMsg,
+        );
         return {
           isError: true,
           content: [
@@ -128,12 +145,13 @@ export default function registerManageTools(server: McpServer, imapService: Imap
       action: z
         .enum(['read', 'unread', 'flag', 'unflag'])
         .describe('Action: read, unread, flag (star), or unflag (unstar)'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    async ({ account, id, mailbox, action }) => {
+    async ({ account, id, mailbox, action, uidValidity }) => {
       try {
-        await imapService.setFlags(account, id, mailbox, action);
-        await audit.log('mark_email', account, { id, mailbox, action }, 'ok');
+        await imapService.setFlags(account, id, mailbox, action, uidValidity);
+        await audit.log('mark_email', account, { id, mailbox, action, uidValidity }, 'ok');
         const labels: Record<string, string> = {
           read: '📖 Marked as read',
           unread: '📩 Marked as unread',
@@ -145,7 +163,13 @@ export default function registerManageTools(server: McpServer, imapService: Imap
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        await audit.log('mark_email', account, { id, mailbox, action }, 'error', errMsg);
+        await audit.log(
+          'mark_email',
+          account,
+          { id, mailbox, action, uidValidity },
+          'error',
+          errMsg,
+        );
         return {
           isError: true,
           content: [

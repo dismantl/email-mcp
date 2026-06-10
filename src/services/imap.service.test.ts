@@ -19,6 +19,7 @@ function createMockImapClient() {
     search: vi.fn().mockResolvedValue([]),
     messageMove: vi.fn().mockResolvedValue(true),
     messageDelete: vi.fn().mockResolvedValue(true),
+    messageCopy: vi.fn().mockResolvedValue(true),
     messageFlagsAdd: vi.fn().mockResolvedValue(true),
     messageFlagsRemove: vi.fn().mockResolvedValue(true),
     _releaseFn: releaseFn,
@@ -289,6 +290,64 @@ describe('ImapService', () => {
       );
 
       expect(client.messageMove).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects deleteEmail when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.deleteEmail('test', '99', 'INBOX', true, '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.messageDelete).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects setFlags when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.setFlags('test', '10', 'INBOX', 'read', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects label changes when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.addLabel('test', '10', 'INBOX', 'Project', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('fails bulk actions before applying them when the expected UIDVALIDITY is stale', async () => {
+      const result = await service.bulkSetFlags('test', [10, 11], 'INBOX', 'mark_read', '999');
+
+      expect(result).toEqual({
+        total: 2,
+        succeeded: 0,
+        failed: 2,
+        errors: ['UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.'],
+      });
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects attachment download when the expected UIDVALIDITY is stale', async () => {
+      await expect(
+        service.downloadAttachment('test', '10', 'INBOX', 'agenda.pdf', undefined, '999'),
+      ).rejects.toThrow('UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.');
+
+      expect(client.fetchOne).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects calendar part extraction when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.getCalendarParts('test', 'INBOX', '10', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.fetch).not.toHaveBeenCalled();
       expect(client._releaseFn).toHaveBeenCalled();
     });
   });

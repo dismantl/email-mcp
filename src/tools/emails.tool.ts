@@ -268,7 +268,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
         );
 
         if (markRead) {
-          await imapService.setFlags(account, emailId, mailbox, 'read');
+          await imapService.setFlags(account, emailId, mailbox, 'read', email.uidValidity);
         }
 
         return {

@@ -278,7 +278,13 @@ export default class HooksService {
     if (actions.labels?.length) {
       const labelOps = actions.labels.map(async (label) => {
         try {
-          await this.imapService.addLabel(email.account, email.meta.id, email.mailbox, label);
+          await this.imapService.addLabel(
+            email.account,
+            email.meta.id,
+            email.mailbox,
+            label,
+            email.meta.uidValidity,
+          );
         } catch {
           await mcpLog(
             'warning',
@@ -293,7 +299,13 @@ export default class HooksService {
     // Apply flag
     if (actions.flag) {
       try {
-        await this.imapService.setFlags(email.account, email.mailbox, email.meta.id, 'flag');
+        await this.imapService.setFlags(
+          email.account,
+          email.meta.id,
+          email.mailbox,
+          'flag',
+          email.meta.uidValidity,
+        );
       } catch {
         await mcpLog('warning', 'hooks', `Could not flag email ${email.meta.id}`);
       }
@@ -302,7 +314,13 @@ export default class HooksService {
     // Mark read
     if (actions.markRead) {
       try {
-        await this.imapService.setFlags(email.account, email.mailbox, email.meta.id, 'read');
+        await this.imapService.setFlags(
+          email.account,
+          email.meta.id,
+          email.mailbox,
+          'read',
+          email.meta.uidValidity,
+        );
       } catch {
         await mcpLog('warning', 'hooks', `Could not mark email ${email.meta.id} as read`);
       }
@@ -448,7 +466,13 @@ export default class HooksService {
     if (this.config.autoLabel && triage.labels?.length) {
       const labelOps = triage.labels.map(async (label) => {
         try {
-          await this.imapService.addLabel(email.account, email.meta.id, email.mailbox, label);
+          await this.imapService.addLabel(
+            email.account,
+            email.meta.id,
+            email.mailbox,
+            label,
+            email.meta.uidValidity,
+          );
         } catch {
           await mcpLog(
             'warning',
@@ -463,7 +487,13 @@ export default class HooksService {
     // Auto-flag
     if (this.config.autoFlag && triage.flag) {
       try {
-        await this.imapService.setFlags(email.account, email.mailbox, email.meta.id, 'flag');
+        await this.imapService.setFlags(
+          email.account,
+          email.meta.id,
+          email.mailbox,
+          'flag',
+          email.meta.uidValidity,
+        );
       } catch {
         await mcpLog('warning', 'hooks', `Could not flag email ${email.meta.id}`);
       }
@@ -514,7 +544,12 @@ export default class HooksService {
     const path = await import('node:path');
 
     try {
-      const full = await this.imapService.getEmail(email.account, email.meta.id, email.mailbox);
+      const full = await this.imapService.getEmail(
+        email.account,
+        email.meta.id,
+        email.mailbox,
+        email.meta.uidValidity,
+      );
       const bodyText = full.bodyText ?? '';
       const bodyHtml = full.bodyHtml ?? '';
       const combined = `${bodyText}\n${bodyHtml}`;
@@ -532,6 +567,7 @@ export default class HooksService {
           email.account,
           email.mailbox,
           email.meta.id,
+          email.meta.uidValidity,
         );
         if (icsContents.length > 0) {
           const events = calSvc.extractFromParts(icsContents);
@@ -561,6 +597,8 @@ export default class HooksService {
           email.meta.id,
           email.mailbox,
           destDir,
+          undefined,
+          email.meta.uidValidity,
         );
       }
 

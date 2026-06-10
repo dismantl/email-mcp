@@ -7,6 +7,11 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerAttachmentTools(server: McpServer, imapService: ImapService): void {
   server.tool(
     'download_attachment',
@@ -16,11 +21,19 @@ export default function registerAttachmentTools(server: McpServer, imapService: 
       id: z.string().describe('Email ID (UID) from list_emails or get_email'),
       mailbox: z.string().default('INBOX').describe('Mailbox containing the email'),
       filename: z.string().describe('Exact attachment filename (from get_email metadata)'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: true, destructiveHint: false },
-    async ({ account, id, mailbox, filename }) => {
+    async ({ account, id, mailbox, filename, uidValidity }) => {
       try {
-        const result = await imapService.downloadAttachment(account, id, mailbox, filename);
+        const result = await imapService.downloadAttachment(
+          account,
+          id,
+          mailbox,
+          filename,
+          undefined,
+          uidValidity,
+        );
 
         return {
           content: [

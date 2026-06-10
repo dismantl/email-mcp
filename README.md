@@ -664,8 +664,9 @@ Features:
 | `check_health` | Connection health, latency, quota, and IMAP capabilities |
 
 `list_emails`, `search_emails`, `get_email`, and `get_emails` include the mailbox
-`UIDVALIDITY` for each UID. Pass the matching `uidValidity` to `move_email` and
-`reply_email` so stale IMAP UIDs are rejected if a mailbox is rebuilt.
+`UIDVALIDITY` for each UID. Pass the matching `uidValidity` to UID-based tools
+that mutate, send from, download from, or create calendar/reminder output from an
+email, so stale IMAP UIDs are rejected if a mailbox is rebuilt.
 
 #### Write (9)
 

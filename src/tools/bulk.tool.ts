@@ -9,6 +9,11 @@ import audit from '../safety/audit.js';
 import type ImapService from '../services/imap.service.js';
 import type { BulkResult } from '../types/index.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UIDs');
+
 export default function registerBulkTools(server: McpServer, imapService: ImapService): void {
   server.tool(
     'bulk_action',
@@ -24,13 +29,14 @@ export default function registerBulkTools(server: McpServer, imapService: ImapSe
         .min(1)
         .max(100)
         .describe('Array of email UIDs (max 100). Get UIDs from list_emails or search_emails.'),
+      uidValidity: uidValiditySchema,
       destination: z
         .string()
         .optional()
         .describe("Destination mailbox — required when action is 'move'"),
     },
     { readOnlyHint: false, destructiveHint: true },
-    async ({ account, mailbox, action, ids, destination }) => {
+    async ({ account, mailbox, action, ids, uidValidity, destination }) => {
       try {
         if (action === 'move' && !destination) {
           return {
@@ -46,11 +52,17 @@ export default function registerBulkTools(server: McpServer, imapService: ImapSe
 
         let result: BulkResult;
         if (action === 'move') {
-          result = await imapService.bulkMove(account, ids, mailbox, destination as string);
+          result = await imapService.bulkMove(
+            account,
+            ids,
+            mailbox,
+            destination as string,
+            uidValidity,
+          );
         } else if (action === 'delete') {
-          result = await imapService.bulkDelete(account, ids, mailbox);
+          result = await imapService.bulkDelete(account, ids, mailbox, false, uidValidity);
         } else {
-          result = await imapService.bulkSetFlags(account, ids, mailbox, action);
+          result = await imapService.bulkSetFlags(account, ids, mailbox, action, uidValidity);
         }
 
         await audit.log(
@@ -61,6 +73,7 @@ export default function registerBulkTools(server: McpServer, imapService: ImapSe
             action,
             ids: ids.length,
             destination,
+            uidValidity,
           },
           'ok',
         );
@@ -78,7 +91,7 @@ export default function registerBulkTools(server: McpServer, imapService: ImapSe
         await audit.log(
           'bulk_action',
           account,
-          { mailbox, action, ids: ids.length },
+          { mailbox, action, ids: ids.length, uidValidity },
           'error',
           errMsg,
         );

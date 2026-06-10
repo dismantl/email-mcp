@@ -136,6 +136,30 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
+  it('uses the fetched UIDVALIDITY when get_email marks the message read', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createEmail()),
+      setFlags: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      markRead: true,
+    });
+
+    expect(response.isError).toBeUndefined();
+    expect(imapService.setFlags).toHaveBeenCalledWith('test', '2', 'INBOX', 'read', '12345');
+  });
+
   it('renders thread id and references in get_emails output', async () => {
     const server = createServer();
     const imapService = {

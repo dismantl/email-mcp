@@ -171,4 +171,26 @@ describe('SmtpService', () => {
       );
     });
   });
+
+  describe('forwardEmail', () => {
+    it('passes UIDVALIDITY when fetching the original message', async () => {
+      const imapService = createMockImapService();
+      service = new SmtpService(connections, rateLimiter, imapService);
+
+      await service.forwardEmail('test', {
+        emailId: '42',
+        uidValidity: '12345',
+        mailbox: 'INBOX',
+        to: ['recipient@example.com'],
+      });
+
+      expect(imapService.getEmail).toHaveBeenCalledWith('test', '42', 'INBOX', '12345');
+      expect(transport.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'recipient@example.com',
+          subject: 'Fwd: Original subject',
+        }),
+      );
+    });
+  });
 });

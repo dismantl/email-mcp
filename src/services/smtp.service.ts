@@ -128,6 +128,7 @@ export default class SmtpService {
     accountName: string,
     options: {
       emailId: string;
+      uidValidity: string;
       mailbox?: string;
       to: string[];
       body?: string;
@@ -137,7 +138,12 @@ export default class SmtpService {
     this.checkRateLimit(accountName);
 
     const account = this.connections.getAccount(accountName);
-    const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
+    const original = await this.imapService.getEmail(
+      accountName,
+      options.emailId,
+      options.mailbox,
+      options.uidValidity,
+    );
 
     const subject = original.subject.startsWith('Fwd:')
       ? original.subject

@@ -29,6 +29,11 @@ import { extractMeetingUrl } from '../utils/meeting-url.js';
 const REMINDER_KEYWORDS =
   /\b(deadline|due by|respond by|reply by|action required|follow.?up|please review|please send|please confirm|submit by|complete by|return by|RSVP by|by (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|by (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))\b/i;
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerCalendarTools(
   server: McpServer,
   imapService: ImapService,
@@ -47,11 +52,17 @@ export default function registerCalendarTools(
       account: z.string().describe('Account name'),
       email_id: z.string().describe('Email UID'),
       mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: true, destructiveHint: false },
-    async ({ account, email_id: emailId, mailbox }) => {
-      const email = await imapService.getEmail(account, emailId, mailbox);
-      const icsContents = await imapService.getCalendarParts(account, mailbox, emailId);
+    async ({ account, email_id: emailId, mailbox, uidValidity }) => {
+      const email = await imapService.getEmail(account, emailId, mailbox, uidValidity);
+      const icsContents = await imapService.getCalendarParts(
+        account,
+        mailbox,
+        emailId,
+        uidValidity,
+      );
 
       if (icsContents.length === 0) {
         return {
@@ -108,6 +119,7 @@ export default function registerCalendarTools(
       account: z.string().describe('Account name'),
       email_id: z.string().describe('Email UID'),
       mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+      uidValidity: uidValiditySchema,
       calendar_name: z
         .string()
         .optional()
@@ -133,13 +145,14 @@ export default function registerCalendarTools(
       account,
       email_id: emailId,
       mailbox,
+      uidValidity,
       calendar_name: calendarName,
       alarm_minutes: alarmMinutes,
       save_attachments: saveAttachments,
       confirm,
     }) => {
       // 1. Fetch full email
-      const email = await imapService.getEmail(account, emailId, mailbox);
+      const email = await imapService.getEmail(account, emailId, mailbox, uidValidity);
       const bodyText = email.bodyText ?? '';
       const bodyHtml = email.bodyHtml ?? '';
       const combinedText = `${bodyText}\n${bodyHtml}`;
@@ -152,7 +165,12 @@ export default function registerCalendarTools(
       let eventAttendees: string[] = [];
       let icsUid: string | undefined;
 
-      const icsContents = await imapService.getCalendarParts(account, mailbox, emailId);
+      const icsContents = await imapService.getCalendarParts(
+        account,
+        mailbox,
+        emailId,
+        uidValidity,
+      );
       if (icsContents.length > 0) {
         const events = calendarService.extractFromParts(icsContents);
         if (events.length > 0) {
@@ -196,6 +214,8 @@ export default function registerCalendarTools(
           emailId,
           mailbox,
           destDir,
+          undefined,
+          uidValidity,
         );
       }
 
@@ -515,6 +535,7 @@ export default function registerCalendarTools(
       account: z.string().describe('Email account name'),
       email_id: z.string().describe('Email ID from list_emails_metadata'),
       mailbox: z.string().default('INBOX').describe('Mailbox containing the email'),
+      uidValidity: uidValiditySchema,
       title: z.string().optional().describe('Reminder title (defaults to email subject)'),
       notes: z
         .string()
@@ -539,6 +560,7 @@ export default function registerCalendarTools(
       account,
       email_id: emailId,
       mailbox,
+      uidValidity,
       title,
       notes,
       due_date,
@@ -546,7 +568,7 @@ export default function registerCalendarTools(
       list_name,
       confirm,
     }) => {
-      const email = await imapService.getEmail(account, emailId, mailbox);
+      const email = await imapService.getEmail(account, emailId, mailbox, uidValidity);
       const bodyText = email.bodyText ?? '';
       const bodyHtml = email.bodyHtml ?? '';
 
@@ -594,16 +616,22 @@ export default function registerCalendarTools(
       account: z.string().describe('Email account name'),
       email_id: z.string().describe('Email ID from list_emails_metadata'),
       mailbox: z.string().default('INBOX').describe('Mailbox containing the email'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: true, destructiveHint: false },
-    async ({ account, email_id: emailId, mailbox }) => {
-      const email = await imapService.getEmail(account, emailId, mailbox);
+    async ({ account, email_id: emailId, mailbox, uidValidity }) => {
+      const email = await imapService.getEmail(account, emailId, mailbox, uidValidity);
       const bodyText = email.bodyText ?? '';
       const bodyHtml = email.bodyHtml ?? '';
       const combined = `${bodyText}\n${bodyHtml}`;
 
       // Check for ICS event
-      const icsContents = await imapService.getCalendarParts(account, mailbox, emailId);
+      const icsContents = await imapService.getCalendarParts(
+        account,
+        mailbox,
+        emailId,
+        uidValidity,
+      );
       let detectedEvent: Record<string, unknown> | null = null;
       if (icsContents.length > 0) {
         const events = calendarService.extractFromParts(icsContents);

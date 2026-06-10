@@ -71,4 +71,78 @@ describe('registerManageTools', () => {
       'ok',
     );
   });
+
+  it('requires UIDVALIDITY for delete_email and passes it to the IMAP service', async () => {
+    const server = createServer();
+    const imapService = {
+      deleteEmail: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ImapService;
+
+    registerManageTools(server, imapService);
+
+    const schema = getToolCall(server, 'delete_email')[2] as Record<string, unknown>;
+    expect(schema).toHaveProperty('uidValidity');
+
+    const response = await getHandler(
+      server,
+      'delete_email',
+    )({
+      account: 'test',
+      emailId: '42',
+      mailbox: 'INBOX',
+      permanent: true,
+      uidValidity: '12345',
+    });
+
+    expect(response.isError).toBeUndefined();
+    expect(imapService.deleteEmail).toHaveBeenCalledWith('test', '42', 'INBOX', true, '12345');
+    expect(audit.log).toHaveBeenCalledWith(
+      'delete_email',
+      'test',
+      {
+        emailId: '42',
+        mailbox: 'INBOX',
+        permanent: true,
+        uidValidity: '12345',
+      },
+      'ok',
+    );
+  });
+
+  it('requires UIDVALIDITY for mark_email and passes it to the IMAP service', async () => {
+    const server = createServer();
+    const imapService = {
+      setFlags: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ImapService;
+
+    registerManageTools(server, imapService);
+
+    const schema = getToolCall(server, 'mark_email')[2] as Record<string, unknown>;
+    expect(schema).toHaveProperty('uidValidity');
+
+    const response = await getHandler(
+      server,
+      'mark_email',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      action: 'read',
+      uidValidity: '12345',
+    });
+
+    expect(response.isError).toBeUndefined();
+    expect(imapService.setFlags).toHaveBeenCalledWith('test', '42', 'INBOX', 'read', '12345');
+    expect(audit.log).toHaveBeenCalledWith(
+      'mark_email',
+      'test',
+      {
+        id: '42',
+        mailbox: 'INBOX',
+        action: 'read',
+        uidValidity: '12345',
+      },
+      'ok',
+    );
+  });
 });
