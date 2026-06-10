@@ -30,9 +30,9 @@ LABEL org.opencontainers.image.title="email-mcp" \
 WORKDIR /app
 
 # Copy only production artifacts
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json ./
 
 # Create config directory for volume mount
 RUN mkdir -p /home/node/.config/email-mcp && chown -R node:node /home/node/.config
