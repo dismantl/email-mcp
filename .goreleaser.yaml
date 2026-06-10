@@ -47,7 +47,7 @@ dockers_v2:
       - tsconfig.json
       - biome.json
     images:
-      - ghcr.io/codefuturist/email-mcp
+      - ghcr.io/dismantl/email-mcp
       - docker.io/diarmid/email-mcp
     tags:
       - "{{ .Version }}"
@@ -67,8 +67,8 @@ dockers_v2:
     labels:
       org.opencontainers.image.title: email-mcp
       org.opencontainers.image.description: "IMAP/SMTP email MCP server — 47 tools, IMAP IDLE push, multi-account, AI triage"
-      org.opencontainers.image.url: "https://github.com/codefuturist/email-mcp"
-      org.opencontainers.image.source: "https://github.com/codefuturist/email-mcp"
+      org.opencontainers.image.url: "https://github.com/dismantl/email-mcp"
+      org.opencontainers.image.source: "https://github.com/dismantl/email-mcp"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.created: "{{ .Date }}"
@@ -76,7 +76,7 @@ dockers_v2:
       org.opencontainers.image.vendor: codefuturist
     annotations:
       org.opencontainers.image.description: "IMAP/SMTP email MCP server — 47 tools, IMAP IDLE push, multi-account, AI triage"
-      org.opencontainers.image.source: "https://github.com/codefuturist/email-mcp"
+      org.opencontainers.image.source: "https://github.com/dismantl/email-mcp"
       org.opencontainers.image.licenses: LGPL-3.0-or-later
       org.opencontainers.image.created: "{{ .Date }}"
 
@@ -91,7 +91,7 @@ dockers_v2:
       - tsconfig.json
       - biome.json
     images:
-      - ghcr.io/codefuturist/email-mcp
+      - ghcr.io/dismantl/email-mcp
       - docker.io/diarmid/email-mcp
     tags:
       - "{{ .Version }}-alpine"
@@ -104,8 +104,8 @@ dockers_v2:
     labels:
       org.opencontainers.image.title: email-mcp
       org.opencontainers.image.description: "IMAP/SMTP email MCP server — 47 tools, IMAP IDLE push, multi-account, AI triage"
-      org.opencontainers.image.url: "https://github.com/codefuturist/email-mcp"
-      org.opencontainers.image.source: "https://github.com/codefuturist/email-mcp"
+      org.opencontainers.image.url: "https://github.com/dismantl/email-mcp"
+      org.opencontainers.image.source: "https://github.com/dismantl/email-mcp"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.created: "{{ .Date }}"
@@ -113,7 +113,7 @@ dockers_v2:
       org.opencontainers.image.vendor: codefuturist
     annotations:
       org.opencontainers.image.description: "IMAP/SMTP email MCP server — 47 tools, IMAP IDLE push, multi-account, AI triage"
-      org.opencontainers.image.source: "https://github.com/codefuturist/email-mcp"
+      org.opencontainers.image.source: "https://github.com/dismantl/email-mcp"
       org.opencontainers.image.licenses: LGPL-3.0-or-later
       org.opencontainers.image.created: "{{ .Date }}"
 
