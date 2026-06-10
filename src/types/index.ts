@@ -169,6 +169,10 @@ export interface EmailMeta {
   from: EmailAddress;
   to: EmailAddress[];
   date: string;
+  messageId: string;
+  threadId: string;
+  inReplyTo?: string;
+  references?: string[];
   seen: boolean;
   flagged: boolean;
   answered: boolean;
@@ -188,9 +192,6 @@ export interface Email extends EmailMeta {
   bcc?: EmailAddress[];
   bodyText?: string;
   bodyHtml?: string;
-  messageId: string;
-  inReplyTo?: string;
-  references?: string[];
   attachments: AttachmentMeta[];
   headers: Record<string, string>;
 }

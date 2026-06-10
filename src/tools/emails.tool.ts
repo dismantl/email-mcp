@@ -31,7 +31,13 @@ function formatEmailMeta(email: EmailMeta): string {
   const from = email.from.name ? `${email.from.name} <${email.from.address}>` : email.from.address;
   const labelStr = email.labels.length > 0 ? `\n  🏷️ ${email.labels.join(', ')}` : '';
 
-  return `[${email.id}] ${flags} ${email.subject}\n  From: ${from} | ${email.date}${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`;
+  return (
+    `[${email.id}] ${flags} ${email.subject}\n` +
+    `  From: ${from} | ${email.date}\n` +
+    `  Message-ID: ${email.messageId}\n` +
+    `  Thread-ID: ${email.threadId}` +
+    `${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`
+  );
 }
 
 /** Strips HTML markup and decodes common entities to produce readable plain text. */
@@ -236,9 +242,14 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
         parts.push(`Date:   ${email.date}`);
         parts.push(`ID:     ${email.messageId}`);
+        parts.push(`Thread: ${email.threadId}`);
 
         if (email.inReplyTo) {
           parts.push(`Reply:  ${email.inReplyTo}`);
+        }
+
+        if (email.references?.length) {
+          parts.push(`Refs:   ${email.references.join(' ')}`);
         }
 
         if (email.attachments.length > 0) {
@@ -329,20 +340,28 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
             email.attachments.length > 0
               ? `📎 ${email.attachments.map((a) => a.filename).join(', ')}`
               : '';
+          const metadataLines = [
+            `━━━ [${emailId}] ${email.subject}`,
+            `Status: ${formatEmailStatus(email)}`,
+            `From:   ${from}`,
+            `Date:   ${email.date}`,
+            `Message-ID: ${email.messageId}`,
+            `Thread-ID: ${email.threadId}`,
+          ];
 
-          results.push(
-            [
-              `━━━ [${emailId}] ${email.subject}`,
-              `Status: ${formatEmailStatus(email)}`,
-              `From:   ${from}`,
-              `Date:   ${email.date}`,
-              attachLine,
-              '',
-              body,
-            ]
-              .filter((l) => l !== '')
-              .join('\n'),
-          );
+          if (email.inReplyTo) {
+            metadataLines.push(`In-Reply-To: ${email.inReplyTo}`);
+          }
+
+          if (email.references?.length) {
+            metadataLines.push(`References: ${email.references.join(' ')}`);
+          }
+
+          if (attachLine) {
+            metadataLines.push(attachLine);
+          }
+
+          results.push([...metadataLines, '', body].join('\n'));
         } else {
           const err = outcome.reason as unknown;
           errors.push(`[${emailId}] Error: ${err instanceof Error ? err.message : String(err)}`);

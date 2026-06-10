@@ -22,6 +22,7 @@ import type {
   QuotaInfo,
   SenderStat,
 } from '../types/index.js';
+import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import type { LabelStrategy } from './label-strategy.js';
 import { detectLabelStrategy } from './label-strategy.js';
 
@@ -39,6 +40,57 @@ function parseAddress(addr: { name?: string; address?: string } | undefined): Em
 function parseAddresses(addrs: { name?: string; address?: string }[] | undefined): EmailAddress[] {
   if (!addrs) return [];
   return addrs.map(parseAddress);
+}
+
+function findHeaderSeparator(raw: string): { index: number; length: number } | undefined {
+  const crlfIndex = raw.indexOf('\r\n\r\n');
+  const lfIndex = raw.indexOf('\n\n');
+
+  if (crlfIndex === -1 && lfIndex === -1) return undefined;
+  if (crlfIndex === -1) return { index: lfIndex, length: 2 };
+  if (lfIndex === -1) return { index: crlfIndex, length: 4 };
+  return crlfIndex < lfIndex ? { index: crlfIndex, length: 4 } : { index: lfIndex, length: 2 };
+}
+
+function parseMessageHeaders(msg: Record<string, unknown>): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  if (msg.source && Buffer.isBuffer(msg.source)) {
+    const raw = msg.source.toString('utf-8');
+    const separator = findHeaderSeparator(raw);
+    Object.assign(headers, parseEmailHeaders(separator ? raw.slice(0, separator.index) : raw));
+  }
+
+  if (msg.headers && Buffer.isBuffer(msg.headers)) {
+    Object.assign(headers, parseEmailHeaders(msg.headers.toString('utf-8')));
+  }
+
+  return headers;
+}
+
+function getThreadFields(msg: Record<string, unknown>): {
+  messageId: string;
+  inReplyTo?: string;
+  references: string[];
+  threadId: string;
+} {
+  const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
+  const headers = parseMessageHeaders(msg);
+  const messageId = (
+    (envelope.messageId as string | undefined) ??
+    headers['message-id'] ??
+    ''
+  ).trim();
+  const inReplyTo =
+    ((envelope.inReplyTo as string | undefined) ?? headers['in-reply-to'])?.trim() || undefined;
+  const references = parseReferencesHeader(headers.references);
+
+  return {
+    messageId,
+    inReplyTo,
+    references,
+    threadId: computeThreadId({ messageId, inReplyTo, references }),
+  };
 }
 
 function hasAttachments(bodyStructure: unknown): boolean {
@@ -107,6 +159,7 @@ function findMimePartByFilename(
 function messageToEmailMeta(msg: Record<string, unknown>): EmailMeta {
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
   const flags = new Set((msg.flags ?? []) as string[]);
+  const threadFields = getThreadFields(msg);
 
   // Extract non-system flags as labels (IMAP keywords)
   const labels = [...flags].filter((f) => !f.startsWith('\\'));
@@ -133,6 +186,7 @@ function messageToEmailMeta(msg: Record<string, unknown>): EmailMeta {
     date: envelope.date
       ? new Date(envelope.date as string).toISOString()
       : new Date().toISOString(),
+    ...threadFields,
     seen: flags.has('\\Seen'),
     flagged: flags.has('\\Flagged'),
     answered: flags.has('\\Answered'),
@@ -149,28 +203,17 @@ async function messageToEmail(
 ): Promise<Email> {
   const meta = messageToEmailMeta(msg);
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
+  const headers = parseMessageHeaders(msg);
 
   // Parse full source for body content
   let bodyText: string | undefined;
   let bodyHtml: string | undefined;
-  const headers: Record<string, string> = {};
 
   if (msg.source && Buffer.isBuffer(msg.source)) {
     const raw = msg.source.toString('utf-8');
-    const headerEnd = raw.indexOf('\r\n\r\n');
-    if (headerEnd >= 0) {
-      // Parse headers
-      const headerSection = raw.slice(0, headerEnd);
-      headerSection.split('\r\n').forEach((line) => {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
-          const key = line.slice(0, colonIdx).trim().toLowerCase();
-          const value = line.slice(colonIdx + 1).trim();
-          headers[key] = value;
-        }
-      });
-
-      const body = raw.slice(headerEnd + 4);
+    const separator = findHeaderSeparator(raw);
+    if (separator) {
+      const body = raw.slice(separator.index + separator.length);
       // Simple content type detection
       const contentType = headers['content-type'] ?? '';
       if (contentType.includes('text/html')) {
@@ -202,9 +245,6 @@ async function messageToEmail(
     bcc: parseAddresses(envelope.bcc as Record<string, string>[]),
     bodyText,
     bodyHtml,
-    messageId: (envelope.messageId as string) ?? '',
-    inReplyTo: (envelope.inReplyTo as string) ?? undefined,
-    references: headers.references?.split(/\s+/).filter(Boolean),
     attachments: extractAttachments(msg.bodyStructure),
     headers,
   };
@@ -376,6 +416,7 @@ export default class ImapService {
           envelope: true,
           flags: true,
           bodyStructure: true,
+          headers: ['Message-ID', 'In-Reply-To', 'References'],
           source: { start: 0, maxLength: 256 },
         },
         { uid: true },
@@ -602,6 +643,7 @@ export default class ImapService {
           envelope: true,
           flags: true,
           bodyStructure: true,
+          headers: ['Message-ID', 'In-Reply-To', 'References'],
           source: { start: 0, maxLength: 256 },
         },
         { uid: true },
@@ -1286,6 +1328,7 @@ export default class ImapService {
     try {
       // Collect all Message-IDs in the thread
       const targetMsgIds = new Set<string>([messageId]);
+      let threadId = messageId;
 
       // First, find the root message to get its References chain
       const rootSearch = await client.search(
@@ -1297,29 +1340,26 @@ export default class ImapService {
       if (rootUids.length > 0) {
         const rootMsg = await client.fetchOne(
           String(rootUids[0]),
-          { uid: true, envelope: true, source: true },
+          {
+            uid: true,
+            envelope: true,
+            headers: ['Message-ID', 'In-Reply-To', 'References'],
+            source: true,
+          },
           { uid: true },
         );
 
         if (rootMsg) {
           const raw = rootMsg as unknown as Record<string, unknown>;
-          const envelope = (raw.envelope ?? {}) as Record<string, unknown>;
-          const inReplyTo = envelope.inReplyTo as string | undefined;
+          const threadFields = getThreadFields(raw);
+          threadId = threadFields.threadId || messageId;
+
+          const { inReplyTo } = threadFields;
           if (inReplyTo) targetMsgIds.add(inReplyTo);
 
-          // Parse References header from source
-          if (raw.source && Buffer.isBuffer(raw.source)) {
-            const src = raw.source.toString('utf-8');
-            const refMatch = /^References:\s*(.+?)(?:\r?\n(?!\s))/ms.exec(src);
-            if (refMatch) {
-              refMatch[1]
-                .split(/\s+/)
-                .filter(Boolean)
-                .forEach((ref) => {
-                  targetMsgIds.add(ref);
-                });
-            }
-          }
+          threadFields.references.forEach((ref) => {
+            targetMsgIds.add(ref);
+          });
         }
       }
 
@@ -1375,7 +1415,7 @@ export default class ImapService {
 
       if (foundUids.size === 0) {
         return {
-          threadId: messageId,
+          threadId,
           messages: [],
           participants: [],
           messageCount: 0,
@@ -1422,7 +1462,7 @@ export default class ImapService {
       });
 
       return {
-        threadId: messageId,
+        threadId,
         messages,
         participants: Array.from(participantMap.values()),
         messageCount: messages.length,

@@ -13,6 +13,8 @@ function createMockImapClient() {
     list: vi.fn().mockResolvedValue([]),
     status: vi.fn().mockResolvedValue({ messages: 5, unseen: 2 }),
     fetch: vi.fn().mockReturnValue((async function* fetchMock() {})()),
+    fetchOne: vi.fn(),
+    download: vi.fn().mockRejectedValue(new Error('no text part')),
     search: vi.fn().mockResolvedValue([]),
     messageMove: vi.fn().mockResolvedValue(true),
     messageDelete: vi.fn().mockResolvedValue(true),
@@ -36,6 +38,51 @@ function createMockConnectionManager(mockClient: ReturnType<typeof createMockIma
     getSmtpTransport: vi.fn(),
     closeAll: vi.fn(),
   } satisfies IConnectionManager;
+}
+
+interface MockMessageOptions {
+  uid: number;
+  subject?: string;
+  messageId: string;
+  inReplyTo?: string;
+  references?: string[];
+}
+
+function createMockMessage({
+  uid,
+  subject = 'Thread update',
+  messageId,
+  inReplyTo,
+  references,
+}: MockMessageOptions): Record<string, unknown> {
+  const headerLines = [
+    `Message-ID: ${messageId}`,
+    inReplyTo ? `In-Reply-To: ${inReplyTo}` : undefined,
+    references ? `References: ${references.join(' ')}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+
+  return {
+    uid,
+    seq: uid,
+    envelope: {
+      subject,
+      messageId,
+      inReplyTo,
+      date: new Date('2026-06-10T12:00:00Z'),
+      from: [{ name: 'Sender', address: 'sender@example.com' }],
+      to: [{ name: 'Recipient', address: 'recipient@example.com' }],
+    },
+    flags: new Set<string>(),
+    bodyStructure: undefined,
+    headers: Buffer.from(`${headerLines.join('\r\n')}\r\n\r\n`),
+    source: Buffer.from(`${headerLines.join('\r\n')}\r\n\r\nBody text`),
+  };
+}
+
+async function* createFetchResults(messages: Record<string, unknown>[]) {
+  for (const message of messages) {
+    yield message;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +130,88 @@ describe('ImapService', () => {
         unseenMessages: 3,
       });
       expect(client.status).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // thread metadata
+  // -----------------------------------------------------------------------
+
+  describe('thread metadata', () => {
+    it('includes canonical thread fields in listEmails results', async () => {
+      client.search.mockResolvedValue([2]);
+      client.fetch.mockReturnValue(
+        createFetchResults([
+          createMockMessage({
+            uid: 2,
+            messageId: '<reply@example.com>',
+            inReplyTo: '<parent@example.com>',
+            references: ['<root@example.com>', '<parent@example.com>'],
+          }),
+        ]),
+      );
+
+      const result = await service.listEmails('test');
+
+      expect(result.items[0]).toMatchObject({
+        messageId: '<reply@example.com>',
+        inReplyTo: '<parent@example.com>',
+        references: ['<root@example.com>', '<parent@example.com>'],
+        threadId: '<root@example.com>',
+      });
+    });
+
+    it('includes references and canonical thread id in getEmail results', async () => {
+      client.fetchOne.mockResolvedValue(
+        createMockMessage({
+          uid: 2,
+          messageId: '<reply@example.com>',
+          inReplyTo: '<parent@example.com>',
+          references: ['<root@example.com>', '<parent@example.com>'],
+        }),
+      );
+
+      const email = await service.getEmail('test', '2');
+
+      expect(email).toMatchObject({
+        messageId: '<reply@example.com>',
+        inReplyTo: '<parent@example.com>',
+        references: ['<root@example.com>', '<parent@example.com>'],
+        threadId: '<root@example.com>',
+      });
+    });
+
+    it('returns the canonical thread id from getThread instead of the query seed', async () => {
+      const root = createMockMessage({
+        uid: 1,
+        messageId: '<root@example.com>',
+      });
+      const reply = createMockMessage({
+        uid: 2,
+        messageId: '<reply@example.com>',
+        inReplyTo: '<root@example.com>',
+        references: ['<root@example.com>'],
+      });
+
+      client.fetchOne.mockResolvedValue(reply);
+      client.fetch.mockReturnValue(createFetchResults([root, reply]));
+      client.search.mockImplementation(async (criteria: Record<string, unknown>) => {
+        const header = criteria.header as Record<string, string> | undefined;
+        if (!header) return [];
+        if (header['Message-ID'] === '<reply@example.com>') return [2];
+        if (header['Message-ID'] === '<root@example.com>') return [1];
+        if (header.References === '<root@example.com>') return [2];
+        if (header['In-Reply-To'] === '<root@example.com>') return [2];
+        return [];
+      });
+
+      const thread = await service.getThread('test', '<reply@example.com>');
+
+      expect(thread.threadId).toBe('<root@example.com>');
+      expect(thread.messages.map((email) => email.threadId)).toEqual([
+        '<root@example.com>',
+        '<root@example.com>',
+      ]);
     });
   });
 
