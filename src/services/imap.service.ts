@@ -22,7 +22,7 @@ import type {
   QuotaInfo,
   SenderStat,
 } from '../types/index.js';
-import { computeThreadId } from '../utils/threading.js';
+import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import type { LabelStrategy } from './label-strategy.js';
 import { detectLabelStrategy } from './label-strategy.js';
 
@@ -52,46 +52,20 @@ function findHeaderSeparator(raw: string): { index: number; length: number } | u
   return crlfIndex < lfIndex ? { index: crlfIndex, length: 4 } : { index: lfIndex, length: 2 };
 }
 
-function parseHeaderLines(headerText: string): Record<string, string> {
-  const headers: Record<string, string> = {};
-  let currentKey: string | undefined;
-
-  headerText.split(/\r?\n/).forEach((line) => {
-    if (line === '') return;
-
-    if (/^\s/.test(line) && currentKey) {
-      headers[currentKey] = `${headers[currentKey]} ${line.trim()}`.trim();
-      return;
-    }
-
-    const colonIdx = line.indexOf(':');
-    if (colonIdx > 0) {
-      currentKey = line.slice(0, colonIdx).trim().toLowerCase();
-      headers[currentKey] = line.slice(colonIdx + 1).trim();
-    }
-  });
-
-  return headers;
-}
-
 function parseMessageHeaders(msg: Record<string, unknown>): Record<string, string> {
   const headers: Record<string, string> = {};
 
   if (msg.source && Buffer.isBuffer(msg.source)) {
     const raw = msg.source.toString('utf-8');
     const separator = findHeaderSeparator(raw);
-    Object.assign(headers, parseHeaderLines(separator ? raw.slice(0, separator.index) : raw));
+    Object.assign(headers, parseEmailHeaders(separator ? raw.slice(0, separator.index) : raw));
   }
 
   if (msg.headers && Buffer.isBuffer(msg.headers)) {
-    Object.assign(headers, parseHeaderLines(msg.headers.toString('utf-8')));
+    Object.assign(headers, parseEmailHeaders(msg.headers.toString('utf-8')));
   }
 
   return headers;
-}
-
-function parseReferencesHeader(value: string | undefined): string[] {
-  return value?.split(/\s+/).filter(Boolean) ?? [];
 }
 
 function getThreadFields(msg: Record<string, unknown>): {

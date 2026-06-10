@@ -13,7 +13,7 @@
 import { ImapFlow } from 'imapflow';
 import { mcpLog } from '../logging.js';
 import type { AccountConfig, EmailMeta, WatcherConfig } from '../types/index.js';
-import { computeThreadId } from '../utils/threading.js';
+import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import eventBus from './event-bus.js';
 
 // ---------------------------------------------------------------------------
@@ -327,9 +327,7 @@ export default class WatcherService {
 
   private static parseReferences(headers: Buffer | undefined): string[] {
     if (!headers) return [];
-    const unfolded = headers.toString('utf-8').replace(/\r?\n[ \t]+/g, ' ');
-    const match = /^references:\s*(.+)$/im.exec(unfolded);
-    return match?.[1].split(/\s+/).filter(Boolean) ?? [];
+    return parseReferencesHeader(parseEmailHeaders(headers.toString('utf-8')).references);
   }
 
   private static hasAttachments(bodyStructure: unknown): boolean {

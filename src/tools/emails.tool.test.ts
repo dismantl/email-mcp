@@ -127,4 +127,32 @@ describe('registerEmailsTools', () => {
       'References: <root@example.com> <parent@example.com>',
     );
   });
+
+  it('omits absent reply metadata while keeping one blank line before the body', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(
+        createEmail({
+          inReplyTo: undefined,
+          references: [],
+        }),
+      ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_emails',
+    )({
+      account: 'test',
+      ids: ['2'],
+      mailbox: 'INBOX',
+      format: 'text',
+    });
+
+    expect(response.content[0].text).not.toContain('In-Reply-To:');
+    expect(response.content[0].text).not.toContain('References:');
+    expect(response.content[0].text).toContain('Thread-ID: <root@example.com>\n\nBody text');
+  });
 });

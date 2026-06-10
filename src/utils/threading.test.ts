@@ -1,4 +1,4 @@
-import { computeThreadId } from './threading.js';
+import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from './threading.js';
 
 describe('computeThreadId', () => {
   it('uses the first References entry as the canonical thread id', () => {
@@ -58,6 +58,29 @@ describe('computeThreadId', () => {
       '<root@example.com>',
       '<root@example.com>',
       '<root@example.com>',
+    ]);
+  });
+
+  it('returns an empty thread id when every candidate is blank', () => {
+    expect(
+      computeThreadId({
+        messageId: ' ',
+        inReplyTo: '',
+        references: ['   '],
+      }),
+    ).toBe('');
+  });
+});
+
+describe('parseEmailHeaders', () => {
+  it('parses folded References headers', () => {
+    const headers = parseEmailHeaders(
+      'Message-ID: <reply@example.com>\r\nReferences: <root@example.com>\r\n <parent@example.com>\r\n\r\n',
+    );
+
+    expect(parseReferencesHeader(headers.references)).toEqual([
+      '<root@example.com>',
+      '<parent@example.com>',
     ]);
   });
 });
