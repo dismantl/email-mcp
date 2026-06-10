@@ -31,7 +31,13 @@ function formatEmailMeta(email: EmailMeta): string {
   const from = email.from.name ? `${email.from.name} <${email.from.address}>` : email.from.address;
   const labelStr = email.labels.length > 0 ? `\n  🏷️ ${email.labels.join(', ')}` : '';
 
-  return `[${email.id}] ${flags} ${email.subject}\n  From: ${from} | ${email.date}${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`;
+  return (
+    `[${email.id}] ${flags} ${email.subject}\n` +
+    `  From: ${from} | ${email.date}\n` +
+    `  Message-ID: ${email.messageId}\n` +
+    `  Thread-ID: ${email.threadId}` +
+    `${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`
+  );
 }
 
 /** Strips HTML markup and decodes common entities to produce readable plain text. */
@@ -236,9 +242,14 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
         parts.push(`Date:   ${email.date}`);
         parts.push(`ID:     ${email.messageId}`);
+        parts.push(`Thread: ${email.threadId}`);
 
         if (email.inReplyTo) {
           parts.push(`Reply:  ${email.inReplyTo}`);
+        }
+
+        if (email.references?.length) {
+          parts.push(`Refs:   ${email.references.join(' ')}`);
         }
 
         if (email.attachments.length > 0) {
@@ -336,6 +347,10 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
               `Status: ${formatEmailStatus(email)}`,
               `From:   ${from}`,
               `Date:   ${email.date}`,
+              `Message-ID: ${email.messageId}`,
+              `Thread-ID: ${email.threadId}`,
+              email.inReplyTo ? `In-Reply-To: ${email.inReplyTo}` : '',
+              email.references?.length ? `References: ${email.references.join(' ')}` : '',
               attachLine,
               '',
               body,

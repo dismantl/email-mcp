@@ -13,6 +13,7 @@
 import { ImapFlow } from 'imapflow';
 import { mcpLog } from '../logging.js';
 import type { AccountConfig, EmailMeta, WatcherConfig } from '../types/index.js';
+import { computeThreadId } from '../utils/threading.js';
 import eventBus from './event-bus.js';
 
 // ---------------------------------------------------------------------------
@@ -248,6 +249,7 @@ export default class WatcherService {
         envelope: true,
         flags: true,
         bodyStructure: true,
+        headers: ['Message-ID', 'In-Reply-To', 'References'],
       })) {
         if (msg.uid > state.lastSeenUid) {
           emails.push(WatcherService.buildEmailMeta(msg));
@@ -287,17 +289,23 @@ export default class WatcherService {
     flags?: Set<string>;
     envelope?: {
       subject?: string;
+      messageId?: string;
+      inReplyTo?: string;
       from?: { name?: string; address?: string }[];
       to?: { name?: string; address?: string }[];
       date?: Date;
     };
     bodyStructure?: unknown;
+    headers?: Buffer;
   }): EmailMeta {
     const flags = msg.flags ?? new Set<string>();
     const labels = [...flags].filter((f) => !SYSTEM_FLAGS.has(f));
 
     const from = msg.envelope?.from?.[0];
     const to = msg.envelope?.to ?? [];
+    const messageId = msg.envelope?.messageId ?? '';
+    const inReplyTo = msg.envelope?.inReplyTo;
+    const references = WatcherService.parseReferences(msg.headers);
 
     return {
       id: String(msg.uid),
@@ -305,12 +313,23 @@ export default class WatcherService {
       from: { name: from?.name, address: from?.address ?? '' },
       to: to.map((a) => ({ name: a.name, address: a.address ?? '' })),
       date: msg.envelope?.date?.toISOString() ?? new Date().toISOString(),
+      messageId,
+      threadId: computeThreadId({ messageId, inReplyTo, references }),
+      inReplyTo,
+      references,
       seen: flags.has('\\Seen'),
       flagged: flags.has('\\Flagged'),
       answered: flags.has('\\Answered'),
       hasAttachments: WatcherService.hasAttachments(msg.bodyStructure),
       labels,
     };
+  }
+
+  private static parseReferences(headers: Buffer | undefined): string[] {
+    if (!headers) return [];
+    const unfolded = headers.toString('utf-8').replace(/\r?\n[ \t]+/g, ' ');
+    const match = /^references:\s*(.+)$/im.exec(unfolded);
+    return match?.[1].split(/\s+/).filter(Boolean) ?? [];
   }
 
   private static hasAttachments(bodyStructure: unknown): boolean {

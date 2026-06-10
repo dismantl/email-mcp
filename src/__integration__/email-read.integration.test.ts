@@ -55,6 +55,8 @@ describe('Email Read Operations', () => {
       expect(result.items).toHaveLength(3);
       expect(result.total).toBeGreaterThanOrEqual(5);
       expect(result.hasMore).toBe(true);
+      expect(result.items[0].messageId).toBeTruthy();
+      expect(result.items[0].threadId).toBeTruthy();
     });
 
     it('should filter emails by sender', async () => {
@@ -94,6 +96,8 @@ describe('Email Read Operations', () => {
       expect(email.subject).toBeTruthy();
       expect(email.from).toBeDefined();
       expect(email.messageId).toBeTruthy();
+      expect(email.threadId).toBeTruthy();
+      expect(email.references).toBeInstanceOf(Array);
     });
   });
 
