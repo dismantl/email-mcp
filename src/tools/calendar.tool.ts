@@ -716,10 +716,10 @@ export default function registerCalendarTools(
         },
         instructions: [
           detectedEvent
-            ? `Call add_to_calendar(account="${account}", email_id="${emailId}") to add the event.`
+            ? `Call add_to_calendar(account="${account}", email_id="${emailId}", mailbox="${mailbox}", uidValidity="${uidValidity}") to add the event.`
             : null,
           detectedReminder
-            ? `Call create_reminder(account="${account}", email_id="${emailId}") to add the reminder.`
+            ? `Call create_reminder(account="${account}", email_id="${emailId}", mailbox="${mailbox}", uidValidity="${uidValidity}") to add the reminder.`
             : null,
           alreadyProcessed
             ? '\u26A0\uFE0F This email was already auto-processed once by the hook system. You are explicitly choosing to process it again.'

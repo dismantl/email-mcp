@@ -5,6 +5,11 @@ import type LocalCalendarService from '../services/local-calendar.service.js';
 import type RemindersService from '../services/reminders.service.js';
 import registerCalendarTools from './calendar.tool.js';
 
+vi.mock('../utils/calendar-state.js', () => ({
+  isCalendarProcessed: vi.fn().mockResolvedValue(false),
+  listCalendarProcessed: vi.fn().mockResolvedValue([]),
+}));
+
 type ToolHandler = (params: Record<string, unknown>) => Promise<{
   content: { type: 'text'; text: string }[];
   isError?: boolean;
@@ -130,5 +135,53 @@ describe('registerCalendarTools', () => {
 
     expect(response.isError).toBeUndefined();
     expect(imapService.getEmail).toHaveBeenCalledWith('test', '42', 'INBOX', '12345');
+  });
+
+  it('includes mailbox and UIDVALIDITY in scheduling follow-up instructions', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createMockEmail()),
+      getCalendarParts: vi.fn().mockResolvedValue(['BEGIN:VCALENDAR']),
+    } as unknown as ImapService;
+    const calendarService = {
+      extractFromParts: vi.fn().mockReturnValue([
+        {
+          summary: 'Planning',
+          start: '2026-06-10T13:00:00.000Z',
+          end: '2026-06-10T14:00:00.000Z',
+          location: 'Conference Room',
+          uid: 'event-1',
+          organizer: { address: 'sender@example.com' },
+          attendees: [],
+        },
+      ]),
+    } as unknown as CalendarService;
+
+    registerCalendarTools(
+      server,
+      imapService,
+      calendarService,
+      {} as LocalCalendarService,
+      {} as RemindersService,
+    );
+
+    const response = await getHandler(
+      server,
+      'analyze_email_for_scheduling',
+    )({
+      account: 'test',
+      email_id: '42',
+      mailbox: 'Projects',
+      uidValidity: '12345',
+    });
+
+    expect(response.isError).toBeUndefined();
+    const analysis = JSON.parse(response.content[0].text) as { instructions: string[] };
+    expect(analysis.instructions).toContain(
+      'Call add_to_calendar(account="test", email_id="42", mailbox="Projects", uidValidity="12345") to add the event.',
+    );
+    expect(analysis.instructions).toContain(
+      'Call create_reminder(account="test", email_id="42", mailbox="Projects", uidValidity="12345") to add the reminder.',
+    );
   });
 });
