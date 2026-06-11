@@ -20,6 +20,12 @@ function getHandler(server: ReturnType<typeof createServer>, name: string): Tool
   return call[4] as ToolHandler;
 }
 
+function getToolOptions(server: ReturnType<typeof createServer>, name: string) {
+  const call = server.tool.mock.calls.find(([toolName]) => toolName === name);
+  if (!call) throw new Error(`Tool not registered: ${name}`);
+  return call[3] as { readOnlyHint?: boolean; destructiveHint?: boolean };
+}
+
 function createEmailMeta(overrides: Partial<EmailMeta> = {}): EmailMeta {
   return {
     id: '2',
@@ -53,6 +59,30 @@ function createEmail(overrides: Partial<Email> = {}): Email {
 }
 
 describe('registerEmailsTools', () => {
+  it('keeps list_emails marked read-only', () => {
+    const server = createServer();
+    const imapService = {} as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    expect(getToolOptions(server, 'list_emails')).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+    });
+  });
+
+  it('does not mark get_email read-only because markRead can mutate flags', () => {
+    const server = createServer();
+    const imapService = {} as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    expect(getToolOptions(server, 'get_email')).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
+  });
+
   it('renders message and thread ids in list_emails output', async () => {
     const server = createServer();
     const result: PaginatedResult<EmailMeta> = {

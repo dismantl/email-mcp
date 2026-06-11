@@ -149,7 +149,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
         .describe('Filter: true=has attachments, false=no attachments'),
       answered: z.boolean().optional().describe('Filter: true=replied, false=not yet replied'),
     },
-    { readOnlyHint: false, destructiveHint: false },
+    { readOnlyHint: true, destructiveHint: false },
     async (params) => {
       try {
         const result = await imapService.listEmails(params.account, {
@@ -233,7 +233,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
         ),
     },
-    { readOnlyHint: true, destructiveHint: false },
+    { readOnlyHint: false, destructiveHint: false },
     async ({ account, emailId, mailbox, uidValidity, format, maxLength, markRead }) => {
       try {
         let readUidValidity: string | undefined;
