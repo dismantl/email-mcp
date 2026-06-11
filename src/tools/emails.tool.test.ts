@@ -136,7 +136,33 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
-  it('uses the fetched UIDVALIDITY when get_email marks the message read', async () => {
+  it('uses the caller UIDVALIDITY when get_email marks the message read', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createEmail()),
+      setFlags: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      uidValidity: '67890',
+      format: 'text',
+      markRead: true,
+    });
+
+    expect(response.isError).toBeUndefined();
+    expect(imapService.getEmail).toHaveBeenCalledWith('test', '2', 'INBOX', '67890');
+    expect(imapService.setFlags).toHaveBeenCalledWith('test', '2', 'INBOX', 'read', '67890');
+  });
+
+  it('rejects markRead without caller UIDVALIDITY before fetching the message', async () => {
     const server = createServer();
     const imapService = {
       getEmail: vi.fn().mockResolvedValue(createEmail()),
@@ -156,8 +182,10 @@ describe('registerEmailsTools', () => {
       markRead: true,
     });
 
-    expect(response.isError).toBeUndefined();
-    expect(imapService.setFlags).toHaveBeenCalledWith('test', '2', 'INBOX', 'read', '12345');
+    expect(response.isError).toBe(true);
+    expect(response.content[0].text).toContain('UIDVALIDITY is required');
+    expect(imapService.getEmail).not.toHaveBeenCalled();
+    expect(imapService.setFlags).not.toHaveBeenCalled();
   });
 
   it('renders thread id and references in get_emails output', async () => {

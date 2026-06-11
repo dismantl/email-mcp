@@ -1168,6 +1168,7 @@ export default class ImapService {
   async fetchDraft(
     accountName: string,
     emailId: number,
+    uidValidity: bigint | number | string,
     mailbox?: string,
   ): Promise<{
     email: Email;
@@ -1183,15 +1184,21 @@ export default class ImapService {
       draftsPath = draftsFolder?.path ?? 'Drafts';
     }
 
-    const email = await this.getEmail(accountName, String(emailId), draftsPath);
+    const email = await this.getEmail(accountName, String(emailId), draftsPath, uidValidity);
     return { email, mailbox: draftsPath };
   }
 
   /** Delete a draft after it has been sent. */
-  async deleteDraft(accountName: string, emailId: number, mailbox: string): Promise<void> {
+  async deleteDraft(
+    accountName: string,
+    emailId: number,
+    mailbox: string,
+    uidValidity: bigint | number | string,
+  ): Promise<void> {
     const client = await this.connections.getImapClient(accountName);
     const lock = await client.getMailboxLock(mailbox);
     try {
+      ImapService.assertMailboxUidValidity(client, mailbox, uidValidity);
       await client.messageDelete(String(emailId), { uid: true });
     } finally {
       lock.release();

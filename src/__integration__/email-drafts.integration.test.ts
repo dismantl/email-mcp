@@ -64,10 +64,13 @@ describe('Email Draft Operations', () => {
         body: 'This draft will be sent.',
       });
 
+      expect(draft.uidValidity).toBeTruthy();
+
       // Send the draft
       const result = await services.smtpService.sendDraft(
         TEST_ACCOUNT_NAME,
         draft.id,
+        draft.uidValidity as string,
         draft.mailbox,
       );
 

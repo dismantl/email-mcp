@@ -61,6 +61,8 @@ function createMockEmail() {
 function createMockImapService() {
   return {
     getEmail: vi.fn().mockResolvedValue(createMockEmail()),
+    fetchDraft: vi.fn().mockResolvedValue({ email: createMockEmail(), mailbox: 'Drafts' }),
+    deleteDraft: vi.fn().mockResolvedValue(undefined),
   } as unknown as ImapService;
 }
 
@@ -191,6 +193,18 @@ describe('SmtpService', () => {
           subject: 'Fwd: Original subject',
         }),
       );
+    });
+  });
+
+  describe('sendDraft', () => {
+    it('passes UIDVALIDITY when fetching and deleting the draft', async () => {
+      const imapService = createMockImapService();
+      service = new SmtpService(connections, rateLimiter, imapService);
+
+      await service.sendDraft('test', 42, '12345', 'Drafts');
+
+      expect(imapService.fetchDraft).toHaveBeenCalledWith('test', 42, '12345', 'Drafts');
+      expect(imapService.deleteDraft).toHaveBeenCalledWith('test', 42, 'Drafts', '12345');
     });
   });
 });

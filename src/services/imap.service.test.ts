@@ -414,6 +414,24 @@ describe('ImapService', () => {
       expect(client.fetch).not.toHaveBeenCalled();
       expect(client._releaseFn).toHaveBeenCalled();
     });
+
+    it('rejects draft fetch when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.fetchDraft('test', 10, '999', 'Drafts')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "Drafts": expected 999, got 12345.',
+      );
+
+      expect(client.fetchOne).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects draft delete when UIDVALIDITY is missing', async () => {
+      await expect(service.deleteDraft('test', 10, 'Drafts', undefined as never)).rejects.toThrow(
+        'UIDVALIDITY is required for mailbox "Drafts".',
+      );
+
+      expect(client.messageDelete).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
   });
 
   // -----------------------------------------------------------------------

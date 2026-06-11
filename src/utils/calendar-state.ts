@@ -39,6 +39,8 @@ export function calendarStateKey(
   mailbox: string,
   uidValidity: string,
 ): string {
+  // Legacy state entries only stored account and UID, so they cannot be safely
+  // mapped to a mailbox generation after UIDVALIDITY-aware deduping.
   return [accountName, mailbox, uidValidity, emailId].map(keyPart).join('__');
 }
 
