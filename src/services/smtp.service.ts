@@ -59,6 +59,7 @@ export default class SmtpService {
     accountName: string,
     options: {
       emailId: string;
+      uidValidity: string;
       mailbox?: string;
       body: string;
       replyAll?: boolean;
@@ -68,7 +69,12 @@ export default class SmtpService {
     this.checkRateLimit(accountName);
 
     const account = this.connections.getAccount(accountName);
-    const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
+    const original = await this.imapService.getEmail(
+      accountName,
+      options.emailId,
+      options.mailbox,
+      options.uidValidity,
+    );
 
     // Build recipient list
     const to = [original.from.address];
@@ -122,6 +128,7 @@ export default class SmtpService {
     accountName: string,
     options: {
       emailId: string;
+      uidValidity: string;
       mailbox?: string;
       to: string[];
       body?: string;
@@ -131,7 +138,12 @@ export default class SmtpService {
     this.checkRateLimit(accountName);
 
     const account = this.connections.getAccount(accountName);
-    const original = await this.imapService.getEmail(accountName, options.emailId, options.mailbox);
+    const original = await this.imapService.getEmail(
+      accountName,
+      options.emailId,
+      options.mailbox,
+      options.uidValidity,
+    );
 
     const subject = original.subject.startsWith('Fwd:')
       ? original.subject
@@ -184,13 +196,19 @@ export default class SmtpService {
   // Send draft
   // -------------------------------------------------------------------------
 
-  async sendDraft(accountName: string, draftId: number, mailbox?: string): Promise<SendResult> {
+  async sendDraft(
+    accountName: string,
+    draftId: number,
+    uidValidity: bigint | number | string,
+    mailbox?: string,
+  ): Promise<SendResult> {
     this.checkRateLimit(accountName);
 
     // Fetch the draft via IMAP
     const { email: draft, mailbox: draftsPath } = await this.imapService.fetchDraft(
       accountName,
       draftId,
+      uidValidity,
       mailbox,
     );
 
@@ -211,7 +229,7 @@ export default class SmtpService {
     });
 
     // Delete the draft after successful send
-    await this.imapService.deleteDraft(accountName, draftId, draftsPath);
+    await this.imapService.deleteDraft(accountName, draftId, draftsPath, uidValidity);
 
     return {
       messageId: result.messageId ?? '',

@@ -37,11 +37,17 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Mark read test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'read');
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'read',
+        email.uidValidity,
+      );
 
-      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, email.id);
       expect(flags.seen).toBe(true);
     });
 
@@ -52,13 +58,25 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Mark unread test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       // First mark read, then unread
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'read');
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'unread');
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'read',
+        email.uidValidity,
+      );
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'unread',
+        email.uidValidity,
+      );
 
-      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, email.id);
       expect(flags.seen).toBe(false);
     });
 
@@ -69,11 +87,17 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Flag test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'flag');
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'flag',
+        email.uidValidity,
+      );
 
-      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, email.id);
       expect(flags.flagged).toBe(true);
     });
 
@@ -84,12 +108,24 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Unflag test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'flag');
-      await services.imapService.setFlags(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'unflag');
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'flag',
+        email.uidValidity,
+      );
+      await services.imapService.setFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'unflag',
+        email.uidValidity,
+      );
 
-      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flags = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, email.id);
       expect(flags.flagged).toBe(false);
     });
   });
@@ -109,9 +145,17 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Move test email',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
+      const emailId = email.id;
+      expect(email.uidValidity).toBeDefined();
 
-      await services.imapService.moveEmail(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'TestArchive');
+      await services.imapService.moveEmail(
+        TEST_ACCOUNT_NAME,
+        emailId,
+        'INBOX',
+        'TestArchive',
+        email.uidValidity ?? '',
+      );
 
       // Verify email is in destination
       const destList = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
@@ -136,15 +180,21 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Delete test email',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
-      await services.imapService.deleteEmail(TEST_ACCOUNT_NAME, emailId);
+      await services.imapService.deleteEmail(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        false,
+        email.uidValidity,
+      );
 
       // Verify email is no longer in INBOX
       const afterList = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Delete test email',
       });
-      const stillInInbox = afterList.items.find((e) => e.id === emailId);
+      const stillInInbox = afterList.items.find((e) => e.id === email.id);
       expect(stillInInbox).toBeUndefined();
     });
 
@@ -155,9 +205,15 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Permanent delete test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
-      await services.imapService.deleteEmail(TEST_ACCOUNT_NAME, emailId, 'INBOX', true);
+      await services.imapService.deleteEmail(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        true,
+        email.uidValidity,
+      );
     });
   });
 
@@ -173,17 +229,23 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Find folder test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       const result = await services.imapService.findEmailFolder(
         TEST_ACCOUNT_NAME,
-        emailId,
+        email.id,
         'INBOX',
+        email.uidValidity,
       );
 
       expect(result).toBeDefined();
       expect(result.folders).toBeInstanceOf(Array);
       expect(result.folders.length).toBeGreaterThanOrEqual(1);
+      expect(result.locations[0]).toMatchObject({
+        mailbox: 'INBOX',
+        emailId: email.id,
+        uidValidity: email.uidValidity,
+      });
     });
   });
 
@@ -200,12 +262,14 @@ describe('Email Management Operations', () => {
         subject: 'Bulk read test',
       });
       const ids = list.items.map((e) => Number.parseInt(e.id, 10));
+      const uidValidity = list.items[0].uidValidity;
 
       const result = await services.imapService.bulkSetFlags(
         TEST_ACCOUNT_NAME,
         ids,
         'INBOX',
         'mark_read',
+        uidValidity,
       );
 
       expect(result.succeeded).toBe(ids.length);
@@ -224,12 +288,14 @@ describe('Email Management Operations', () => {
         subject: 'Bulk move test',
       });
       const ids = list.items.map((e) => Number.parseInt(e.id, 10));
+      const uidValidity = list.items[0].uidValidity;
 
       const result = await services.imapService.bulkMove(
         TEST_ACCOUNT_NAME,
         ids,
         'INBOX',
         'BulkDest',
+        uidValidity,
       );
 
       expect(result.succeeded).toBe(ids.length);
@@ -248,8 +314,15 @@ describe('Email Management Operations', () => {
         subject: 'Bulk delete test',
       });
       const ids = list.items.map((e) => Number.parseInt(e.id, 10));
+      const uidValidity = list.items[0].uidValidity;
 
-      const result = await services.imapService.bulkDelete(TEST_ACCOUNT_NAME, ids, 'INBOX', true);
+      const result = await services.imapService.bulkDelete(
+        TEST_ACCOUNT_NAME,
+        ids,
+        'INBOX',
+        true,
+        uidValidity,
+      );
 
       expect(result.succeeded).toBe(ids.length);
     });

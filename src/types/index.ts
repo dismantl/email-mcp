@@ -165,6 +165,7 @@ export interface Mailbox {
 
 export interface EmailMeta {
   id: string;
+  uidValidity: string;
   subject: string;
   from: EmailAddress;
   to: EmailAddress[];
@@ -371,6 +372,7 @@ export interface ScheduledEmail {
   lastError?: string;
   draftMessageId?: string;
   draftMailbox?: string;
+  draftUidValidity?: string;
   inReplyTo?: string;
   references?: string[];
   sentAt?: string;

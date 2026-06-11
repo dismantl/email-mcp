@@ -33,13 +33,14 @@ describe('Advanced Email Operations', () => {
       });
       expect(list.items.length).toBeGreaterThanOrEqual(1);
 
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       const attachment = await services.imapService.downloadAttachment(
         TEST_ACCOUNT_NAME,
-        emailId,
+        email.id,
         'INBOX',
         'readme.txt',
+        email.uidValidity,
       );
 
       expect(attachment).toBeDefined();
@@ -68,6 +69,7 @@ describe('Advanced Email Operations', () => {
           list.items[0].id,
           'INBOX',
           'image.png',
+          list.items[0].uidValidity,
         );
         expect(attachment.filename).toBe('image.png');
       }
@@ -108,9 +110,15 @@ describe('Advanced Email Operations', () => {
           TEST_ACCOUNT_NAME,
           list.items[0].id,
           'INBOX',
+          list.items[0].uidValidity,
         );
 
         expect(result.folders).toContain('INBOX');
+        expect(result.locations[0]).toMatchObject({
+          mailbox: 'INBOX',
+          emailId: list.items[0].id,
+          uidValidity: list.items[0].uidValidity,
+        });
       }
     });
   });

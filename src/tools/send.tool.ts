@@ -9,6 +9,11 @@ import { validateInputLength } from '../safety/validation.js';
 
 import type SmtpService from '../services/smtp.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerSendTools(server: McpServer, smtpService: SmtpService): void {
   // ---------------------------------------------------------------------------
   // send_email
@@ -76,6 +81,10 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID to reply to (from list_emails or get_email)'),
+      uidValidity: z
+        .union([z.string().min(1), z.number()])
+        .transform((value) => value.toString())
+        .describe('Mailbox UIDVALIDITY captured with the email UID'),
       mailbox: z.string().default('INBOX').describe('Mailbox where the original email is'),
       body: z.string().describe('Reply body content'),
       replyAll: z.boolean().default(false).describe('Reply to all recipients'),
@@ -88,7 +97,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'reply_email',
           params.account,
-          { emailId: params.emailId, mailbox: params.mailbox },
+          { emailId: params.emailId, mailbox: params.mailbox, uidValidity: params.uidValidity },
           'ok',
         );
         return {
@@ -104,7 +113,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'reply_email',
           params.account,
-          { emailId: params.emailId, mailbox: params.mailbox },
+          { emailId: params.emailId, mailbox: params.mailbox, uidValidity: params.uidValidity },
           'error',
           errMsg,
         );
@@ -130,6 +139,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID to forward (from list_emails or get_email)'),
+      uidValidity: uidValiditySchema,
       mailbox: z.string().default('INBOX').describe('Mailbox where the original email is'),
       to: z.array(z.string().email()).min(1).describe('Forward to these recipients'),
       body: z.string().optional().describe('Additional message above the forwarded content'),
@@ -142,7 +152,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'forward_email',
           params.account,
-          { to: params.to, emailId: params.emailId },
+          { to: params.to, emailId: params.emailId, uidValidity: params.uidValidity },
           'ok',
         );
         return {
@@ -158,7 +168,7 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
         await audit.log(
           'forward_email',
           params.account,
-          { to: params.to, emailId: params.emailId },
+          { to: params.to, emailId: params.emailId, uidValidity: params.uidValidity },
           'error',
           errMsg,
         );

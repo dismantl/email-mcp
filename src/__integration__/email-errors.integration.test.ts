@@ -110,6 +110,7 @@ describe('Error Handling', () => {
             list.items[0].id,
             'INBOX',
             'nonexistent-file.xyz',
+            list.items[0].uidValidity,
           ),
         ).rejects.toThrow();
       }

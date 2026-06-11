@@ -30,10 +30,11 @@ function formatEmailMeta(email: EmailMeta): string {
 
   const from = email.from.name ? `${email.from.name} <${email.from.address}>` : email.from.address;
   const labelStr = email.labels.length > 0 ? `\n  🏷️ ${email.labels.join(', ')}` : '';
+  const uidValidityLine = email.uidValidity ? `\n  UIDVALIDITY: ${email.uidValidity}` : '';
 
   return (
     `[${email.id}] ${flags} ${email.subject}\n` +
-    `  From: ${from} | ${email.date}\n` +
+    `  From: ${from} | ${email.date}${uidValidityLine}\n` +
     `  Message-ID: ${email.messageId}\n` +
     `  Thread-ID: ${email.threadId}` +
     `${labelStr}${email.preview ? `\n  ${email.preview}` : ''}`
@@ -73,6 +74,11 @@ function stripReplyChain(text: string): string {
 }
 
 type BodyFormat = 'full' | 'text' | 'stripped';
+
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
 
 /**
  * Applies the requested body format and optional character cap.
@@ -203,6 +209,9 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID from list_emails or search_emails'),
       mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+      uidValidity: uidValiditySchema
+        .optional()
+        .describe('Required when markRead=true; get from list_emails or search_emails'),
       format: z
         .enum(['full', 'text', 'stripped'])
         .default('full')
@@ -224,10 +233,18 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
         ),
     },
-    { readOnlyHint: true, destructiveHint: false },
-    async ({ account, emailId, mailbox, format, maxLength, markRead }) => {
+    { readOnlyHint: false, destructiveHint: false },
+    async ({ account, emailId, mailbox, uidValidity, format, maxLength, markRead }) => {
       try {
-        const email = await imapService.getEmail(account, emailId, mailbox);
+        let readUidValidity: string | undefined;
+        if (markRead) {
+          if (uidValidity === undefined) {
+            throw new Error('UIDVALIDITY is required when markRead=true.');
+          }
+          readUidValidity = uidValidity;
+        }
+
+        const email = await imapService.getEmail(account, emailId, mailbox, uidValidity);
 
         const parts: string[] = [
           `📧 ${email.subject}`,
@@ -241,7 +258,10 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
         }
 
         parts.push(`Date:   ${email.date}`);
-        parts.push(`ID:     ${email.messageId}`);
+        parts.push(`Mailbox: ${mailbox}`);
+        parts.push(`UID:    ${emailId}`);
+        parts.push(`UIDVALIDITY: ${email.uidValidity ?? '(unknown)'}`);
+        parts.push(`Message-ID: ${email.messageId}`);
         parts.push(`Thread: ${email.threadId}`);
 
         if (email.inReplyTo) {
@@ -263,8 +283,8 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           applyBodyFormat(email.bodyText, email.bodyHtml, format as BodyFormat, maxLength),
         );
 
-        if (markRead) {
-          await imapService.setFlags(account, emailId, mailbox, 'read');
+        if (readUidValidity !== undefined) {
+          await imapService.setFlags(account, emailId, mailbox, 'read', readUidValidity);
         }
 
         return {
@@ -345,6 +365,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
             `Status: ${formatEmailStatus(email)}`,
             `From:   ${from}`,
             `Date:   ${email.date}`,
+            `UIDVALIDITY: ${email.uidValidity ?? '(unknown)'}`,
             `Message-ID: ${email.messageId}`,
             `Thread-ID: ${email.threadId}`,
           ];

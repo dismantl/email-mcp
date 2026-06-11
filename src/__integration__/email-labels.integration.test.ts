@@ -57,20 +57,35 @@ describe('Email Label Operations', () => {
         subject: 'Label test email',
       });
       expect(list.items.length).toBeGreaterThanOrEqual(1);
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       // Add label
-      await services.imapService.addLabel(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'MyTag');
+      await services.imapService.addLabel(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'MyTag',
+        email.uidValidity,
+      );
 
       // Verify label is present
-      const flagsAfterAdd = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flagsAfterAdd = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, email.id);
       expect(flagsAfterAdd.labels).toContain('MyTag');
 
       // Remove label
-      await services.imapService.removeLabel(TEST_ACCOUNT_NAME, emailId, 'INBOX', 'MyTag');
+      await services.imapService.removeLabel(
+        TEST_ACCOUNT_NAME,
+        email.id,
+        'INBOX',
+        'MyTag',
+        email.uidValidity,
+      );
 
       // Verify label is removed
-      const flagsAfterRemove = await services.imapService.getEmailFlags(TEST_ACCOUNT_NAME, emailId);
+      const flagsAfterRemove = await services.imapService.getEmailFlags(
+        TEST_ACCOUNT_NAME,
+        email.id,
+      );
       expect(flagsAfterRemove.labels).not.toContain('MyTag');
     });
   });

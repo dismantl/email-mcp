@@ -9,6 +9,11 @@ import audit from '../safety/audit.js';
 import type ImapService from '../services/imap.service.js';
 import type SmtpService from '../services/smtp.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the draft UID');
+
 export default function registerDraftTools(
   server: McpServer,
   imapService: ImapService,
@@ -52,7 +57,12 @@ export default function registerDraftTools(
           content: [
             {
               type: 'text' as const,
-              text: `📝 Draft saved (ID: ${result.id}, folder: ${result.mailbox}).`,
+              text: [
+                `📝 Draft saved (ID: ${result.id}, folder: ${result.mailbox}).`,
+                result.uidValidity ? `UIDVALIDITY: ${result.uidValidity}` : undefined,
+              ]
+                .filter((line): line is string => Boolean(line))
+                .join('\n'),
             },
           ],
         };
@@ -81,14 +91,15 @@ export default function registerDraftTools(
     {
       account: z.string().describe('Account name from list_accounts'),
       id: z.number().int().describe('Draft email UID (from list_emails on Drafts mailbox)'),
+      uidValidity: uidValiditySchema,
       mailbox: z.string().optional().describe('Drafts folder path (auto-detected if omitted)'),
     },
     { readOnlyHint: false, destructiveHint: true },
-    async ({ account, id, mailbox }) => {
+    async ({ account, id, uidValidity, mailbox }) => {
       try {
-        const result = await smtpService.sendDraft(account, id, mailbox);
+        const result = await smtpService.sendDraft(account, id, uidValidity, mailbox);
 
-        await audit.log('send_draft', account, { id, mailbox }, 'ok');
+        await audit.log('send_draft', account, { id, mailbox, uidValidity }, 'ok');
 
         return {
           content: [
@@ -100,7 +111,7 @@ export default function registerDraftTools(
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        await audit.log('send_draft', account, { id, mailbox }, 'error', errMsg);
+        await audit.log('send_draft', account, { id, mailbox, uidValidity }, 'error', errMsg);
         return {
           isError: true,
           content: [

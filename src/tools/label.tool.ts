@@ -13,6 +13,11 @@ import { validateLabelName } from '../safety/validation.js';
 
 import type ImapService from '../services/imap.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerLabelTools(server: McpServer, imapService: ImapService): void {
   // ---------------------------------------------------------------------------
   // list_labels
@@ -73,13 +78,19 @@ export default function registerLabelTools(server: McpServer, imapService: ImapS
       emailId: z.string().describe('Email ID (UID) from list_emails'),
       mailbox: z.string().describe('Mailbox containing the email (must be a real folder)'),
       label: z.string().describe('Label name to add (e.g., "Important", "Project-X")'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    async ({ account, emailId, mailbox, label }) => {
+    async ({ account, emailId, mailbox, label, uidValidity }) => {
       try {
         const cleanLabel = validateLabelName(label);
-        await imapService.addLabel(account, emailId, mailbox, cleanLabel);
-        await audit.log('add_label', account, { emailId, mailbox, label: cleanLabel }, 'ok');
+        await imapService.addLabel(account, emailId, mailbox, cleanLabel, uidValidity);
+        await audit.log(
+          'add_label',
+          account,
+          { emailId, mailbox, label: cleanLabel, uidValidity },
+          'ok',
+        );
         return {
           content: [
             { type: 'text' as const, text: `🏷️ Label "${label}" added to email ${emailId}.` },
@@ -87,7 +98,13 @@ export default function registerLabelTools(server: McpServer, imapService: ImapS
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        await audit.log('add_label', account, { emailId, mailbox, label }, 'error', errMsg);
+        await audit.log(
+          'add_label',
+          account,
+          { emailId, mailbox, label, uidValidity },
+          'error',
+          errMsg,
+        );
         return {
           isError: true,
           content: [{ type: 'text' as const, text: `Failed to add label: ${errMsg}` }],
@@ -108,13 +125,19 @@ export default function registerLabelTools(server: McpServer, imapService: ImapS
       emailId: z.string().describe('Email ID (UID) from list_emails'),
       mailbox: z.string().describe('Mailbox containing the email (must be a real folder)'),
       label: z.string().describe('Label name to remove'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    async ({ account, emailId, mailbox, label }) => {
+    async ({ account, emailId, mailbox, label, uidValidity }) => {
       try {
         const cleanLabel = validateLabelName(label);
-        await imapService.removeLabel(account, emailId, mailbox, cleanLabel);
-        await audit.log('remove_label', account, { emailId, mailbox, label: cleanLabel }, 'ok');
+        await imapService.removeLabel(account, emailId, mailbox, cleanLabel, uidValidity);
+        await audit.log(
+          'remove_label',
+          account,
+          { emailId, mailbox, label: cleanLabel, uidValidity },
+          'ok',
+        );
         return {
           content: [
             {
@@ -125,7 +148,13 @@ export default function registerLabelTools(server: McpServer, imapService: ImapS
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        await audit.log('remove_label', account, { emailId, mailbox, label }, 'error', errMsg);
+        await audit.log(
+          'remove_label',
+          account,
+          { emailId, mailbox, label, uidValidity },
+          'error',
+          errMsg,
+        );
         return {
           isError: true,
           content: [{ type: 'text' as const, text: `Failed to remove label: ${errMsg}` }],

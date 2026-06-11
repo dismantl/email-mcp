@@ -29,8 +29,19 @@ interface StateFile {
   processedEmails: Record<string, ProcessedEntry>;
 }
 
-function stateKey(accountName: string, emailId: string): string {
-  return `${accountName.replace(/\s+/g, '_')}__${emailId}`;
+function keyPart(value: string): string {
+  return value.replace(/\s+/g, '_');
+}
+
+export function calendarStateKey(
+  accountName: string,
+  emailId: string,
+  mailbox: string,
+  uidValidity: string,
+): string {
+  // Legacy state entries only stored account and UID, so they cannot be safely
+  // mapped to a mailbox generation after UIDVALIDITY-aware deduping.
+  return [accountName, mailbox, uidValidity, emailId].map(keyPart).join('__');
 }
 
 async function readState(): Promise<StateFile> {
@@ -81,21 +92,28 @@ async function withStateLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Returns true if this email has already been auto-processed by the hook system. */
-export async function isCalendarProcessed(accountName: string, emailId: string): Promise<boolean> {
+export async function isCalendarProcessed(
+  accountName: string,
+  emailId: string,
+  mailbox: string,
+  uidValidity: string,
+): Promise<boolean> {
   const state = await readState();
-  return stateKey(accountName, emailId) in state.processedEmails;
+  return calendarStateKey(accountName, emailId, mailbox, uidValidity) in state.processedEmails;
 }
 
 /** Marks an email as processed so the hook auto-trigger won't fire again. */
 export async function markCalendarProcessed(
   accountName: string,
   emailId: string,
+  mailbox: string,
+  uidValidity: string,
   action: CalendarAction,
   title?: string,
 ): Promise<void> {
   await withStateLock(async () => {
     const state = await readState();
-    state.processedEmails[stateKey(accountName, emailId)] = {
+    state.processedEmails[calendarStateKey(accountName, emailId, mailbox, uidValidity)] = {
       processedAt: new Date().toISOString(),
       action,
       title,

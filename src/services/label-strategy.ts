@@ -9,6 +9,7 @@
 
 import type { ImapFlow } from 'imapflow';
 import type { LabelInfo, LabelStrategyType } from '../types/index.js';
+import { assertMailboxUidValidity } from './uidvalidity.js';
 
 // ---------------------------------------------------------------------------
 // Strategy interface
@@ -17,8 +18,20 @@ import type { LabelInfo, LabelStrategyType } from '../types/index.js';
 export interface LabelStrategy {
   readonly type: LabelStrategyType;
   listLabels: (client: ImapFlow) => Promise<LabelInfo[]>;
-  addLabel: (client: ImapFlow, emailId: string, mailbox: string, label: string) => Promise<void>;
-  removeLabel: (client: ImapFlow, emailId: string, mailbox: string, label: string) => Promise<void>;
+  addLabel: (
+    client: ImapFlow,
+    emailId: string,
+    mailbox: string,
+    label: string,
+    uidValidity: bigint | number | string,
+  ) => Promise<void>;
+  removeLabel: (
+    client: ImapFlow,
+    emailId: string,
+    mailbox: string,
+    label: string,
+    uidValidity: bigint | number | string,
+  ) => Promise<void>;
   createLabel: (client: ImapFlow, name: string) => Promise<void>;
   deleteLabel: (client: ImapFlow, name: string) => Promise<void>;
 }
@@ -46,10 +59,11 @@ function createProtonMailStrategy(): LabelStrategy {
         }));
     },
 
-    addLabel: async (client, emailId, mailbox, label) => {
+    addLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const targetPath = `${LABELS_PREFIX}${label}`;
       const lock = await client.getMailboxLock(mailbox);
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageCopy(emailId, targetPath, { uid: true });
         if (!result) {
           throw new Error(
@@ -61,13 +75,14 @@ function createProtonMailStrategy(): LabelStrategy {
       }
     },
 
-    removeLabel: async (client, emailId, mailbox, label) => {
+    removeLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const labelPath = `${LABELS_PREFIX}${label}`;
 
       // Fetch Message-ID from source mailbox
       const srcLock = await client.getMailboxLock(mailbox);
       let messageId: string | undefined;
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const msg = await client.fetchOne(emailId, { envelope: true }, { uid: true });
         if (msg && typeof msg === 'object' && 'envelope' in msg) {
           const envelope = msg.envelope as { messageId?: string };
@@ -139,9 +154,10 @@ function createGmailStrategy(): LabelStrategy {
         .map((mb) => ({ name: mb.name, path: mb.path, strategy: type }));
     },
 
-    addLabel: async (client, emailId, mailbox, label) => {
+    addLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsAdd(emailId, [label], {
           uid: true,
           useLabels: true,
@@ -154,9 +170,10 @@ function createGmailStrategy(): LabelStrategy {
       }
     },
 
-    removeLabel: async (client, emailId, mailbox, label) => {
+    removeLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsRemove(emailId, [label], {
           uid: true,
           useLabels: true,
@@ -210,9 +227,10 @@ function createKeywordStrategy(): LabelStrategy {
       }
     },
 
-    addLabel: async (client, emailId, mailbox, label) => {
+    addLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsAdd(emailId, [label], { uid: true });
         if (!result) {
           throw new Error(`Server rejected adding keyword "${label}".`);
@@ -222,9 +240,10 @@ function createKeywordStrategy(): LabelStrategy {
       }
     },
 
-    removeLabel: async (client, emailId, mailbox, label) => {
+    removeLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsRemove(emailId, [label], { uid: true });
         if (!result) {
           throw new Error(`Server rejected removing keyword "${label}".`);
