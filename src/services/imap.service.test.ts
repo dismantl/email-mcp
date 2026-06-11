@@ -303,6 +303,10 @@ describe('ImapService', () => {
     });
 
     it('returns real mailbox UID and UIDVALIDITY for folder lookup results', async () => {
+      client.getMailboxLock.mockImplementation(async (mailbox: string) => {
+        client.mailbox.uidValidity = mailbox === 'INBOX' ? 67890n : 12345n;
+        return { release: client._releaseFn };
+      });
       client.fetchOne.mockResolvedValue({
         headers: Buffer.from('Message-ID: <message@example.com>\r\n\r\n'),
       });
@@ -320,9 +324,37 @@ describe('ImapService', () => {
 
       expect(result).toMatchObject({
         folders: ['INBOX'],
-        locations: [{ mailbox: 'INBOX', emailId: '77', uidValidity: '12345' }],
+        locations: [{ mailbox: 'INBOX', emailId: '77', uidValidity: '67890' }],
         messageId: '<message@example.com>',
       });
+    });
+
+    it('rejects permanent delete from a virtual folder before deleting', async () => {
+      client.list.mockResolvedValue([
+        { name: 'All Mail', path: 'All Mail', specialUse: '\\All', flags: new Set<string>() },
+      ]);
+
+      await expect(service.deleteEmail('test', '99', 'All Mail', true, '12345')).rejects.toThrow(
+        '"All Mail" is a virtual folder (\\All). Use find_email_folder to locate the real folder first.',
+      );
+
+      expect(client.messageDelete).not.toHaveBeenCalled();
+      expect(client.getMailboxLock).not.toHaveBeenCalled();
+    });
+
+    it('rejects permanent bulk delete from a virtual folder before deleting', async () => {
+      client.list.mockResolvedValue([
+        { name: 'All Mail', path: 'All Mail', specialUse: '\\All', flags: new Set<string>() },
+      ]);
+
+      await expect(
+        service.bulkDelete('test', [99, 100], 'All Mail', true, '12345'),
+      ).rejects.toThrow(
+        '"All Mail" is a virtual folder (\\All). Use find_email_folder to locate the real folder first.',
+      );
+
+      expect(client.messageDelete).not.toHaveBeenCalled();
+      expect(client.getMailboxLock).not.toHaveBeenCalled();
     });
 
     it('rejects deleteEmail when the expected UIDVALIDITY is stale', async () => {

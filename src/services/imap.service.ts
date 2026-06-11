@@ -902,6 +902,7 @@ export default class ImapService {
     const safeMailbox = sanitizeMailboxName(mailbox);
 
     if (permanent) {
+      await ImapService.assertRealMailbox(client, safeMailbox);
       const lock = await client.getMailboxLock(safeMailbox);
       try {
         ImapService.assertMailboxUidValidity(client, safeMailbox, uidValidity);
@@ -1075,6 +1076,7 @@ export default class ImapService {
     };
 
     if (permanent) {
+      await ImapService.assertRealMailbox(client, safeMailbox);
       const lock = await client.getMailboxLock(safeMailbox);
       try {
         ImapService.assertMailboxUidValidity(client, safeMailbox, uidValidity);
