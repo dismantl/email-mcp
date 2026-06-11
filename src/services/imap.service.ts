@@ -783,13 +783,16 @@ export default class ImapService {
     accountName: string,
     emailId: string,
     sourceMailbox: string,
+    uidValidity: bigint | number | string,
   ): Promise<{ folders: string[]; messageId?: string }> {
     const client = await this.connections.getImapClient(accountName);
+    const safeSource = sanitizeMailboxName(sourceMailbox);
 
     // 1. Fetch Message-ID from the source mailbox
     let messageId: string | undefined;
-    const srcLock = await client.getMailboxLock(sourceMailbox);
+    const srcLock = await client.getMailboxLock(safeSource);
     try {
+      ImapService.assertMailboxUidValidity(client, safeSource, uidValidity);
       const msg = await client.fetchOne(emailId, { headers: true }, { uid: true });
       // biome-ignore lint/complexity/useOptionalChain: optional chain breaks TS type narrowing for union with false
       if (msg && msg.headers && Buffer.isBuffer(msg.headers)) {

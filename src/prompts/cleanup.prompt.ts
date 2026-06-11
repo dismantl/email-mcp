@@ -76,7 +76,7 @@ Present your findings as:
 
 ${
   execute
-    ? `**Mode: EXECUTE** — After presenting the plan, proceed to execute the cleanup using bulk_action to move/delete emails as categorized. Report results for each action.`
+    ? `**Mode: EXECUTE** — After presenting the plan, proceed to execute the cleanup using bulk_action to move/delete emails as categorized. Group bulk_action calls by mailbox and uidValidity from list_emails, and pass that exact uidValidity with each UID group. Report results for each action.`
     : `**Mode: DRY RUN** — Present the cleanup plan only. Ask if I want to proceed with any of the suggested actions.`
 }`,
             },

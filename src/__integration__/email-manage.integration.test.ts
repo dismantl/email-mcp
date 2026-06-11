@@ -229,12 +229,13 @@ describe('Email Management Operations', () => {
       const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, {
         subject: 'Find folder test',
       });
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       const result = await services.imapService.findEmailFolder(
         TEST_ACCOUNT_NAME,
-        emailId,
+        email.id,
         'INBOX',
+        email.uidValidity,
       );
 
       expect(result).toBeDefined();

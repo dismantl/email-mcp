@@ -110,6 +110,7 @@ describe('Advanced Email Operations', () => {
           TEST_ACCOUNT_NAME,
           list.items[0].id,
           'INBOX',
+          list.items[0].uidValidity,
         );
 
         expect(result.folders).toContain('INBOX');

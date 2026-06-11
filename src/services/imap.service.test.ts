@@ -293,6 +293,15 @@ describe('ImapService', () => {
       expect(client._releaseFn).toHaveBeenCalled();
     });
 
+    it('rejects findEmailFolder when the expected UIDVALIDITY is stale', async () => {
+      await expect(service.findEmailFolder('test', '42', 'INBOX', '999')).rejects.toThrow(
+        'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
+      );
+
+      expect(client.fetchOne).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
     it('rejects deleteEmail when the expected UIDVALIDITY is stale', async () => {
       await expect(service.deleteEmail('test', '99', 'INBOX', true, '999')).rejects.toThrow(
         'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',

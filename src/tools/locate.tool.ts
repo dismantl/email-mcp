@@ -11,6 +11,11 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 
+const uidValiditySchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => value.toString())
+  .describe('Mailbox UIDVALIDITY captured with the email UID');
+
 export default function registerLocateTools(server: McpServer, imapService: ImapService): void {
   server.tool(
     'find_email_folder',
@@ -24,14 +29,16 @@ export default function registerLocateTools(server: McpServer, imapService: Imap
         .string()
         .default('INBOX')
         .describe('Mailbox where the email is currently visible (e.g., "All Mail")'),
+      uidValidity: uidValiditySchema,
     },
     { readOnlyHint: true },
-    async ({ account, emailId, sourceMailbox }) => {
+    async ({ account, emailId, sourceMailbox, uidValidity }) => {
       try {
         const { folders, messageId } = await imapService.findEmailFolder(
           account,
           emailId,
           sourceMailbox,
+          uidValidity,
         );
 
         if (folders.length === 0) {
