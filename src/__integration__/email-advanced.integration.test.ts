@@ -114,6 +114,11 @@ describe('Advanced Email Operations', () => {
         );
 
         expect(result.folders).toContain('INBOX');
+        expect(result.locations[0]).toMatchObject({
+          mailbox: 'INBOX',
+          emailId: list.items[0].id,
+          uidValidity: list.items[0].uidValidity,
+        });
       }
     });
   });

@@ -29,6 +29,7 @@ describe('registerLocateTools', () => {
     const imapService = {
       findEmailFolder: vi.fn().mockResolvedValue({
         folders: ['INBOX'],
+        locations: [{ mailbox: 'INBOX', emailId: '77', uidValidity: '12345' }],
         messageId: '<message@example.com>',
       }),
     } as unknown as ImapService;
@@ -50,5 +51,8 @@ describe('registerLocateTools', () => {
 
     expect(response.isError).toBeUndefined();
     expect(imapService.findEmailFolder).toHaveBeenCalledWith('test', '42', 'All Mail', '12345');
+    expect(response.content[0].text).toContain('sourceMailbox: INBOX');
+    expect(response.content[0].text).toContain('emailId: 77');
+    expect(response.content[0].text).toContain('uidValidity: 12345');
   });
 });

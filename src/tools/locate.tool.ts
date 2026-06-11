@@ -16,6 +16,14 @@ const uidValiditySchema = z
   .transform((value) => value.toString())
   .describe('Mailbox UIDVALIDITY captured with the email UID');
 
+function formatLocation(location: {
+  mailbox: string;
+  emailId: string;
+  uidValidity: string;
+}): string {
+  return `  • sourceMailbox: ${location.mailbox}, emailId: ${location.emailId}, uidValidity: ${location.uidValidity}`;
+}
+
 export default function registerLocateTools(server: McpServer, imapService: ImapService): void {
   server.tool(
     'find_email_folder',
@@ -34,7 +42,7 @@ export default function registerLocateTools(server: McpServer, imapService: Imap
     { readOnlyHint: true },
     async ({ account, emailId, sourceMailbox, uidValidity }) => {
       try {
-        const { folders, messageId } = await imapService.findEmailFolder(
+        const { folders, locations, messageId } = await imapService.findEmailFolder(
           account,
           emailId,
           sourceMailbox,
@@ -56,7 +64,8 @@ export default function registerLocateTools(server: McpServer, imapService: Imap
           `📁 Email ${emailId} found in ${folders.length} folder(s):`,
           ...folders.map((f) => `  • ${f}`),
           '',
-          `Use the first folder as sourceMailbox for move_email or delete_email.`,
+          'Use one of these exact locations for move_email or delete_email:',
+          ...locations.map(formatLocation),
         ];
         if (messageId) {
           lines.push(`Message-ID: ${messageId}`);

@@ -784,7 +784,11 @@ export default class ImapService {
     emailId: string,
     sourceMailbox: string,
     uidValidity: bigint | number | string,
-  ): Promise<{ folders: string[]; messageId?: string }> {
+  ): Promise<{
+    folders: string[];
+    locations: { mailbox: string; emailId: string; uidValidity: string }[];
+    messageId?: string;
+  }> {
     const client = await this.connections.getImapClient(accountName);
     const safeSource = sanitizeMailboxName(sourceMailbox);
 
@@ -824,16 +828,25 @@ export default class ImapService {
 
     // 3. Search each real mailbox for the Message-ID (sequential — each needs its own lock)
     const folders: string[] = [];
+    const locations: { mailbox: string; emailId: string; uidValidity: string }[] = [];
     const searchMailbox = async (mbPath: string): Promise<void> => {
       try {
         const lock = await client.getMailboxLock(mbPath);
         try {
+          const mailboxUidValidity = ImapService.currentMailboxUidValidity(client, mbPath);
           const results = await client.search(
             { header: { 'message-id': messageId } },
             { uid: true },
           );
           if (results && Array.isArray(results) && results.length > 0) {
             folders.push(mbPath);
+            locations.push(
+              ...results.map((uid) => ({
+                mailbox: mbPath,
+                emailId: String(uid),
+                uidValidity: mailboxUidValidity,
+              })),
+            );
           }
         } finally {
           lock.release();
@@ -848,7 +861,7 @@ export default class ImapService {
       await searchMailbox(mb.path);
     }
 
-    return { folders, messageId };
+    return { folders, locations, messageId };
   }
 
   // -------------------------------------------------------------------------

@@ -241,6 +241,11 @@ describe('Email Management Operations', () => {
       expect(result).toBeDefined();
       expect(result.folders).toBeInstanceOf(Array);
       expect(result.folders.length).toBeGreaterThanOrEqual(1);
+      expect(result.locations[0]).toMatchObject({
+        mailbox: 'INBOX',
+        emailId: email.id,
+        uidValidity: email.uidValidity,
+      });
     });
   });
 

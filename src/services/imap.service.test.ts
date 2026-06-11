@@ -302,6 +302,29 @@ describe('ImapService', () => {
       expect(client._releaseFn).toHaveBeenCalled();
     });
 
+    it('returns real mailbox UID and UIDVALIDITY for folder lookup results', async () => {
+      client.fetchOne.mockResolvedValue({
+        headers: Buffer.from('Message-ID: <message@example.com>\r\n\r\n'),
+      });
+      client.list.mockResolvedValue([
+        {
+          name: 'INBOX',
+          path: 'INBOX',
+          listed: true,
+          flags: new Set<string>(),
+        },
+      ]);
+      client.search.mockResolvedValue([77]);
+
+      const result = await service.findEmailFolder('test', '42', 'All Mail', '12345');
+
+      expect(result).toMatchObject({
+        folders: ['INBOX'],
+        locations: [{ mailbox: 'INBOX', emailId: '77', uidValidity: '12345' }],
+        messageId: '<message@example.com>',
+      });
+    });
+
     it('rejects deleteEmail when the expected UIDVALIDITY is stale', async () => {
       await expect(service.deleteEmail('test', '99', 'INBOX', true, '999')).rejects.toThrow(
         'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
