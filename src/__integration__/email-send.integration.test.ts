@@ -131,11 +131,12 @@ describe('Email Send Operations', () => {
       });
       expect(list.items.length).toBeGreaterThanOrEqual(1);
 
-      const emailId = list.items[0].id;
+      const email = list.items[0];
 
       // Forward
       const fwd = await services.smtpService.forwardEmail(TEST_ACCOUNT_NAME, {
-        emailId,
+        emailId: email.id,
+        uidValidity: email.uidValidity,
         to: ['alice@localhost'],
         body: 'FYI, see below.',
       });

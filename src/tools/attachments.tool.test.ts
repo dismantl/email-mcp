@@ -57,7 +57,6 @@ describe('registerAttachmentTools', () => {
       '42',
       'INBOX',
       'agenda.pdf',
-      undefined,
       '12345',
     );
   });

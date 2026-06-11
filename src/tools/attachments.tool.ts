@@ -31,7 +31,6 @@ export default function registerAttachmentTools(server: McpServer, imapService: 
           id,
           mailbox,
           filename,
-          undefined,
           uidValidity,
         );
 

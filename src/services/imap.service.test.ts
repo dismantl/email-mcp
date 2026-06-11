@@ -302,6 +302,15 @@ describe('ImapService', () => {
       expect(client._releaseFn).toHaveBeenCalled();
     });
 
+    it('rejects deleteEmail when UIDVALIDITY is missing', async () => {
+      await expect(
+        service.deleteEmail('test', '99', 'INBOX', true, undefined as never),
+      ).rejects.toThrow('UIDVALIDITY is required for mailbox "INBOX".');
+
+      expect(client.messageDelete).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
     it('rejects setFlags when the expected UIDVALIDITY is stale', async () => {
       await expect(service.setFlags('test', '10', 'INBOX', 'read', '999')).rejects.toThrow(
         'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
@@ -311,10 +320,28 @@ describe('ImapService', () => {
       expect(client._releaseFn).toHaveBeenCalled();
     });
 
+    it('rejects setFlags when UIDVALIDITY is missing', async () => {
+      await expect(
+        service.setFlags('test', '10', 'INBOX', 'read', undefined as never),
+      ).rejects.toThrow('UIDVALIDITY is required for mailbox "INBOX".');
+
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
     it('rejects label changes when the expected UIDVALIDITY is stale', async () => {
       await expect(service.addLabel('test', '10', 'INBOX', 'Project', '999')).rejects.toThrow(
         'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
       );
+
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects label changes when UIDVALIDITY is missing', async () => {
+      await expect(
+        service.addLabel('test', '10', 'INBOX', 'Project', undefined as never),
+      ).rejects.toThrow('UIDVALIDITY is required for mailbox "INBOX".');
 
       expect(client.messageFlagsAdd).not.toHaveBeenCalled();
       expect(client._releaseFn).toHaveBeenCalled();
@@ -333,10 +360,38 @@ describe('ImapService', () => {
       expect(client._releaseFn).toHaveBeenCalled();
     });
 
+    it('fails bulk actions before applying them when UIDVALIDITY is missing', async () => {
+      const result = await service.bulkSetFlags(
+        'test',
+        [10, 11],
+        'INBOX',
+        'mark_read',
+        undefined as never,
+      );
+
+      expect(result).toEqual({
+        total: 2,
+        succeeded: 0,
+        failed: 2,
+        errors: ['UIDVALIDITY is required for mailbox "INBOX".'],
+      });
+      expect(client.messageFlagsAdd).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
     it('rejects attachment download when the expected UIDVALIDITY is stale', async () => {
       await expect(
-        service.downloadAttachment('test', '10', 'INBOX', 'agenda.pdf', undefined, '999'),
+        service.downloadAttachment('test', '10', 'INBOX', 'agenda.pdf', '999'),
       ).rejects.toThrow('UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.');
+
+      expect(client.fetchOne).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects attachment download when UIDVALIDITY is missing', async () => {
+      await expect(
+        service.downloadAttachment('test', '10', 'INBOX', 'agenda.pdf', undefined as never),
+      ).rejects.toThrow('UIDVALIDITY is required for mailbox "INBOX".');
 
       expect(client.fetchOne).not.toHaveBeenCalled();
       expect(client._releaseFn).toHaveBeenCalled();
@@ -346,6 +401,15 @@ describe('ImapService', () => {
       await expect(service.getCalendarParts('test', 'INBOX', '10', '999')).rejects.toThrow(
         'UIDVALIDITY mismatch for mailbox "INBOX": expected 999, got 12345.',
       );
+
+      expect(client.fetch).not.toHaveBeenCalled();
+      expect(client._releaseFn).toHaveBeenCalled();
+    });
+
+    it('rejects calendar part extraction when UIDVALIDITY is missing', async () => {
+      await expect(
+        service.getCalendarParts('test', 'INBOX', '10', undefined as never),
+      ).rejects.toThrow('UIDVALIDITY is required for mailbox "INBOX".');
 
       expect(client.fetch).not.toHaveBeenCalled();
       expect(client._releaseFn).toHaveBeenCalled();
@@ -384,7 +448,7 @@ describe('ImapService', () => {
 
   describe('deleteEmail', () => {
     it('permanently deletes when permanent=true', async () => {
-      await service.deleteEmail('test', '99', 'INBOX', true);
+      await service.deleteEmail('test', '99', 'INBOX', true, '12345');
 
       expect(client.messageDelete).toHaveBeenCalledWith('99', { uid: true });
       expect(client.messageMove).not.toHaveBeenCalled();
@@ -398,7 +462,7 @@ describe('ImapService', () => {
         { name: 'Trash', path: 'Trash', specialUse: '\\Trash' },
       ]);
 
-      await service.deleteEmail('test', '99', 'INBOX', false);
+      await service.deleteEmail('test', '99', 'INBOX', false, '12345');
 
       expect(client.messageDelete).not.toHaveBeenCalled();
       expect(client.messageMove).toHaveBeenCalledWith('99', 'Trash', { uid: true });
@@ -412,21 +476,21 @@ describe('ImapService', () => {
 
   describe('setFlags', () => {
     it('adds Seen flag for read action', async () => {
-      await service.setFlags('test', '10', 'INBOX', 'read');
+      await service.setFlags('test', '10', 'INBOX', 'read', '12345');
 
       expect(client.messageFlagsAdd).toHaveBeenCalledWith('10', ['\\Seen'], { uid: true });
       expect(client.messageFlagsRemove).not.toHaveBeenCalled();
     });
 
     it('removes Seen flag for unread action', async () => {
-      await service.setFlags('test', '10', 'INBOX', 'unread');
+      await service.setFlags('test', '10', 'INBOX', 'unread', '12345');
 
       expect(client.messageFlagsRemove).toHaveBeenCalledWith('10', ['\\Seen'], { uid: true });
       expect(client.messageFlagsAdd).not.toHaveBeenCalled();
     });
 
     it('adds Flagged flag for flag action', async () => {
-      await service.setFlags('test', '10', 'INBOX', 'flag');
+      await service.setFlags('test', '10', 'INBOX', 'flag', '12345');
 
       expect(client.messageFlagsAdd).toHaveBeenCalledWith('10', ['\\Flagged'], { uid: true });
     });

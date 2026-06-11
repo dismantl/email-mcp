@@ -15,6 +15,7 @@ import { mcpLog } from '../logging.js';
 import type { AccountConfig, EmailMeta, WatcherConfig } from '../types/index.js';
 import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import eventBus from './event-bus.js';
+import { currentMailboxUidValidity } from './uidvalidity.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -242,6 +243,7 @@ export default class WatcherService {
       const searchRange = `${state.lastSeenUid + 1}:*`;
       const emails: EmailMeta[] = [];
       let maxUid = state.lastSeenUid;
+      const uidValidity = currentMailboxUidValidity(state.client, state.folder);
 
       // eslint-disable-next-line no-restricted-syntax -- need sequential async iteration
       for await (const msg of state.client.fetch(searchRange, {
@@ -252,7 +254,7 @@ export default class WatcherService {
         headers: ['Message-ID', 'In-Reply-To', 'References'],
       })) {
         if (msg.uid > state.lastSeenUid) {
-          emails.push(WatcherService.buildEmailMeta(msg));
+          emails.push(WatcherService.buildEmailMeta(msg, uidValidity));
           maxUid = Math.max(maxUid, msg.uid);
         }
       }
@@ -284,20 +286,23 @@ export default class WatcherService {
   // Helpers
   // -------------------------------------------------------------------------
 
-  private static buildEmailMeta(msg: {
-    uid: number;
-    flags?: Set<string>;
-    envelope?: {
-      subject?: string;
-      messageId?: string;
-      inReplyTo?: string;
-      from?: { name?: string; address?: string }[];
-      to?: { name?: string; address?: string }[];
-      date?: Date;
-    };
-    bodyStructure?: unknown;
-    headers?: Buffer;
-  }): EmailMeta {
+  private static buildEmailMeta(
+    msg: {
+      uid: number;
+      flags?: Set<string>;
+      envelope?: {
+        subject?: string;
+        messageId?: string;
+        inReplyTo?: string;
+        from?: { name?: string; address?: string }[];
+        to?: { name?: string; address?: string }[];
+        date?: Date;
+      };
+      bodyStructure?: unknown;
+      headers?: Buffer;
+    },
+    uidValidity: string,
+  ): EmailMeta {
     const flags = msg.flags ?? new Set<string>();
     const labels = [...flags].filter((f) => !SYSTEM_FLAGS.has(f));
 
@@ -309,6 +314,7 @@ export default class WatcherService {
 
     return {
       id: String(msg.uid),
+      uidValidity,
       subject: msg.envelope?.subject ?? '(no subject)',
       from: { name: from?.name, address: from?.address ?? '' },
       to: to.map((a) => ({ name: a.name, address: a.address ?? '' })),

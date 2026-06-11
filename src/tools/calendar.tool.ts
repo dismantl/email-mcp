@@ -214,7 +214,6 @@ export default function registerCalendarTools(
           emailId,
           mailbox,
           destDir,
-          undefined,
           uidValidity,
         );
       }
@@ -680,12 +679,13 @@ export default function registerCalendarTools(
         : null;
 
       // Check if already processed by hooks
-      const { isCalendarProcessed, listCalendarProcessed } = await import(
+      const { calendarStateKey, isCalendarProcessed, listCalendarProcessed } = await import(
         '../utils/calendar-state.js'
       );
-      const alreadyProcessed = await isCalendarProcessed(account, emailId);
+      const alreadyProcessed = await isCalendarProcessed(account, emailId, mailbox, uidValidity);
       const processedList = alreadyProcessed ? await listCalendarProcessed() : [];
-      const processedEntry = processedList.find(({ key }) => key.includes(emailId));
+      const processedKey = calendarStateKey(account, emailId, mailbox, uidValidity);
+      const processedEntry = processedList.find(({ key }) => key === processedKey);
 
       let recommendation: string;
       if (detectedEvent && detectedReminder) {

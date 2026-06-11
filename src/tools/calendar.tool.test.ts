@@ -6,6 +6,8 @@ import type RemindersService from '../services/reminders.service.js';
 import registerCalendarTools from './calendar.tool.js';
 
 vi.mock('../utils/calendar-state.js', () => ({
+  calendarStateKey: (accountName: string, emailId: string, mailbox: string, uidValidity: string) =>
+    [accountName, mailbox, uidValidity, emailId].join('__'),
   isCalendarProcessed: vi.fn().mockResolvedValue(false),
   listCalendarProcessed: vi.fn().mockResolvedValue([]),
 }));

@@ -23,14 +23,14 @@ export interface LabelStrategy {
     emailId: string,
     mailbox: string,
     label: string,
-    uidValidity?: bigint | number | string,
+    uidValidity: bigint | number | string,
   ) => Promise<void>;
   removeLabel: (
     client: ImapFlow,
     emailId: string,
     mailbox: string,
     label: string,
-    uidValidity?: bigint | number | string,
+    uidValidity: bigint | number | string,
   ) => Promise<void>;
   createLabel: (client: ImapFlow, name: string) => Promise<void>;
   deleteLabel: (client: ImapFlow, name: string) => Promise<void>;
@@ -63,9 +63,7 @@ function createProtonMailStrategy(): LabelStrategy {
       const targetPath = `${LABELS_PREFIX}${label}`;
       const lock = await client.getMailboxLock(mailbox);
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageCopy(emailId, targetPath, { uid: true });
         if (!result) {
           throw new Error(
@@ -84,9 +82,7 @@ function createProtonMailStrategy(): LabelStrategy {
       const srcLock = await client.getMailboxLock(mailbox);
       let messageId: string | undefined;
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const msg = await client.fetchOne(emailId, { envelope: true }, { uid: true });
         if (msg && typeof msg === 'object' && 'envelope' in msg) {
           const envelope = msg.envelope as { messageId?: string };
@@ -161,9 +157,7 @@ function createGmailStrategy(): LabelStrategy {
     addLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsAdd(emailId, [label], {
           uid: true,
           useLabels: true,
@@ -179,9 +173,7 @@ function createGmailStrategy(): LabelStrategy {
     removeLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsRemove(emailId, [label], {
           uid: true,
           useLabels: true,
@@ -238,9 +230,7 @@ function createKeywordStrategy(): LabelStrategy {
     addLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsAdd(emailId, [label], { uid: true });
         if (!result) {
           throw new Error(`Server rejected adding keyword "${label}".`);
@@ -253,9 +243,7 @@ function createKeywordStrategy(): LabelStrategy {
     removeLabel: async (client, emailId, mailbox, label, uidValidity) => {
       const lock = await client.getMailboxLock(mailbox);
       try {
-        if (uidValidity !== undefined) {
-          assertMailboxUidValidity(client, mailbox, uidValidity);
-        }
+        assertMailboxUidValidity(client, mailbox, uidValidity);
         const result = await client.messageFlagsRemove(emailId, [label], { uid: true });
         if (!result) {
           throw new Error(`Server rejected removing keyword "${label}".`);

@@ -342,10 +342,23 @@ export default class HooksService {
       const { isCalendarProcessed, markCalendarProcessed } = await import(
         '../utils/calendar-state.js'
       );
-      const already = await isCalendarProcessed(email.account, email.meta.id);
+      const { uidValidity } = email.meta;
+      const already = await isCalendarProcessed(
+        email.account,
+        email.meta.id,
+        email.mailbox,
+        uidValidity,
+      );
       if (!already) {
         await this.applyCalendarAction(email);
-        await markCalendarProcessed(email.account, email.meta.id, 'event', email.meta.subject);
+        await markCalendarProcessed(
+          email.account,
+          email.meta.id,
+          email.mailbox,
+          uidValidity,
+          'event',
+          email.meta.subject,
+        );
       } else {
         await mcpLog(
           'info',
@@ -518,10 +531,23 @@ export default class HooksService {
       const { isCalendarProcessed, markCalendarProcessed } = await import(
         '../utils/calendar-state.js'
       );
-      const already = await isCalendarProcessed(email.account, email.meta.id);
+      const { uidValidity } = email.meta;
+      const already = await isCalendarProcessed(
+        email.account,
+        email.meta.id,
+        email.mailbox,
+        uidValidity,
+      );
       if (!already) {
         await this.applyCalendarAction(email);
-        await markCalendarProcessed(email.account, email.meta.id, 'event', email.meta.subject);
+        await markCalendarProcessed(
+          email.account,
+          email.meta.id,
+          email.mailbox,
+          uidValidity,
+          'event',
+          email.meta.subject,
+        );
       } else {
         await mcpLog(
           'info',
@@ -597,7 +623,6 @@ export default class HooksService {
           email.meta.id,
           email.mailbox,
           destDir,
-          undefined,
           email.meta.uidValidity,
         );
       }
