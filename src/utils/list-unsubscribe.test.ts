@@ -83,4 +83,18 @@ describe('parseListUnsubscribe', () => {
     expect(parseListUnsubscribe({ 'list-unsubscribe': '<ftp://example.com/u>' })).toBeUndefined();
     expect(parseListUnsubscribe({ 'list-unsubscribe': '<>' })).toBeUndefined();
   });
+
+  it('rejects a non-URL value that only prefix-matches a scheme', () => {
+    // Guards against treating crafted/garbage header content as an authoritative target.
+    expect(parseListUnsubscribe({ 'list-unsubscribe': '<https://>' })).toBeUndefined();
+    expect(parseListUnsubscribe({ 'list-unsubscribe': '<https:// not a url>' })).toBeUndefined();
+  });
+
+  it('rejects a URI containing internal whitespace (malformed / spoof-resistant)', () => {
+    const result = parseListUnsubscribe({
+      'list-unsubscribe': '<https://example.com/u  spoof>, <mailto:a@example.com>',
+    });
+    // The whitespace http URI is dropped; the clean mailto still resolves.
+    expect(result).toEqual({ oneClick: false, mailto: 'mailto:a@example.com' });
+  });
 });

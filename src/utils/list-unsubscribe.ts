@@ -1,3 +1,9 @@
+import type { ParsedUnsubscribe } from '../types/index.js';
+
+// Canonical definition lives in types/ (referenced by Email); re-exported here so
+// consumers can import the parser's result type alongside the parser.
+export type { ParsedUnsubscribe };
+
 /**
  * Parses RFC 2369 / RFC 8058 List-Unsubscribe headers into an actionable target.
  *
@@ -5,21 +11,15 @@
  * instead of inferring one from body text. "One-click" (RFC 8058) is only
  * genuine when an HTTP(S) target exists AND List-Unsubscribe-Post advertises it;
  * a mailto-only or directive-less header is a manual unsubscribe, not one-click.
+ *
+ * List-Unsubscribe is attacker-controlled email content, so a URI is surfaced
+ * only when it parses as a real URL of the expected scheme and carries no
+ * internal whitespace (which a valid angle-bracketed URI never does, and which
+ * keeps the rendered Unsubscribe line unspoofable).
  */
-
-export interface ParsedUnsubscribe {
-  /** True only when an http(s) target exists AND List-Unsubscribe-Post advertises one-click (RFC 8058). */
-  oneClick: boolean;
-  /** First http(s) unsubscribe URI, verbatim. */
-  http?: string;
-  /** First mailto: unsubscribe URI, verbatim (scheme and query preserved). */
-  mailto?: string;
-}
 
 const ANGLE_URI_RE = /<([^>]+)>/g;
 const ONE_CLICK_RE = /list-unsubscribe\s*=\s*one-click/i;
-const HTTP_RE = /^https?:\/\//i;
-const MAILTO_RE = /^mailto:/i;
 
 function extractUris(raw: string): string[] {
   const bracketed = [...raw.matchAll(ANGLE_URI_RE)].map((match) => match[1].trim()).filter(Boolean);
@@ -29,6 +29,15 @@ function extractUris(raw: string): string[] {
   return bare ? [bare] : [];
 }
 
+function uriOfScheme(uri: string, schemes: readonly string[]): boolean {
+  if (/\s/.test(uri)) return false;
+  try {
+    return schemes.includes(new URL(uri).protocol);
+  } catch {
+    return false;
+  }
+}
+
 export function parseListUnsubscribe(
   headers: Record<string, string>,
 ): ParsedUnsubscribe | undefined {
@@ -36,8 +45,8 @@ export function parseListUnsubscribe(
   if (!raw) return undefined;
 
   const uris = extractUris(raw);
-  const http = uris.find((uri) => HTTP_RE.test(uri));
-  const mailto = uris.find((uri) => MAILTO_RE.test(uri));
+  const http = uris.find((uri) => uriOfScheme(uri, ['http:', 'https:']));
+  const mailto = uris.find((uri) => uriOfScheme(uri, ['mailto:']));
   if (!http && !mailto) return undefined;
 
   const oneClick = Boolean(http) && ONE_CLICK_RE.test(headers['list-unsubscribe-post'] ?? '');

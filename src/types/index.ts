@@ -2,8 +2,6 @@
  * Shared TypeScript types for the Email MCP Server.
  */
 
-import type { ParsedUnsubscribe } from '../utils/list-unsubscribe.js';
-
 // ---------------------------------------------------------------------------
 // Address
 // ---------------------------------------------------------------------------
@@ -188,6 +186,16 @@ export interface AttachmentMeta {
   filename: string;
   mimeType: string;
   size: number;
+}
+
+/** Parsed RFC 2369 / RFC 8058 List-Unsubscribe target. See utils/list-unsubscribe.ts. */
+export interface ParsedUnsubscribe {
+  /** True only when an http(s) target exists AND List-Unsubscribe-Post advertises one-click (RFC 8058). */
+  oneClick: boolean;
+  /** First valid http(s) unsubscribe URI, verbatim. */
+  http?: string;
+  /** First valid mailto: unsubscribe URI, verbatim (scheme and query preserved). */
+  mailto?: string;
 }
 
 export interface Email extends EmailMeta {
