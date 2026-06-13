@@ -55,6 +55,15 @@ describe('parseListUnsubscribe', () => {
     expect(result?.oneClick).toBe(true);
   });
 
+  it('does not claim one-click for a cleartext http target (RFC 8058 requires https)', () => {
+    const result = parseListUnsubscribe({
+      'list-unsubscribe': '<http://example.com/u>',
+      'list-unsubscribe-post': 'List-Unsubscribe=One-Click',
+    });
+    // The http link is still surfaced, but it is not a valid one-click POST target.
+    expect(result).toEqual({ oneClick: false, http: 'http://example.com/u' });
+  });
+
   it('does not claim one-click when only a mailto target exists', () => {
     const result = parseListUnsubscribe({
       'list-unsubscribe': '<mailto:a@example.com>',

@@ -49,7 +49,12 @@ export function parseListUnsubscribe(
   const mailto = uris.find((uri) => uriOfScheme(uri, ['mailto:']));
   if (!http && !mailto) return undefined;
 
-  const oneClick = Boolean(http) && ONE_CLICK_RE.test(headers['list-unsubscribe-post'] ?? '');
+  // RFC 8058 one-click POST is defined only over HTTPS; a cleartext http target
+  // (or mailto-only) is a manual unsubscribe even if List-Unsubscribe-Post claims one-click.
+  const oneClick =
+    http !== undefined &&
+    uriOfScheme(http, ['https:']) &&
+    ONE_CLICK_RE.test(headers['list-unsubscribe-post'] ?? '');
 
   return { oneClick, ...(http ? { http } : {}), ...(mailto ? { mailto } : {}) };
 }
