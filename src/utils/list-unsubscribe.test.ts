@@ -55,6 +55,14 @@ describe('parseListUnsubscribe', () => {
     expect(result?.oneClick).toBe(true);
   });
 
+  it('prefers an https target over a cleartext http one regardless of header order', () => {
+    const result = parseListUnsubscribe({
+      'list-unsubscribe': '<http://example.com/u>, <https://example.com/u>',
+      'list-unsubscribe-post': 'List-Unsubscribe=One-Click',
+    });
+    expect(result).toEqual({ oneClick: true, http: 'https://example.com/u' });
+  });
+
   it('does not claim one-click for a cleartext http target (RFC 8058 requires https)', () => {
     const result = parseListUnsubscribe({
       'list-unsubscribe': '<http://example.com/u>',

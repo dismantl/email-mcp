@@ -45,7 +45,10 @@ export function parseListUnsubscribe(
   if (!raw) return undefined;
 
   const uris = extractUris(raw);
-  const http = uris.find((uri) => uriOfScheme(uri, ['http:', 'https:']));
+  // Prefer https so a header listing http before https still yields a one-click-capable target.
+  const http =
+    uris.find((uri) => uriOfScheme(uri, ['https:'])) ??
+    uris.find((uri) => uriOfScheme(uri, ['http:']));
   const mailto = uris.find((uri) => uriOfScheme(uri, ['mailto:']));
   if (!http && !mailto) return undefined;
 
