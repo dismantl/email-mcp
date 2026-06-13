@@ -324,9 +324,9 @@ describe('registerEmailsTools', () => {
     );
   });
 
-  it('keeps the Unsubscribe line under maxLength truncation (Naomi triage call shape)', async () => {
-    // Naomi reads triage mail via get_emails(format="text", maxLength=4000).
-    // The line is metadata emitted before the body, so body truncation must not drop it.
+  it('keeps the Unsubscribe line under maxLength truncation', async () => {
+    // Clients commonly read mail via get_emails(format="text", maxLength=N); the line is
+    // metadata emitted before the body, so body truncation must not drop it.
     const server = createServer();
     const longBody = 'x'.repeat(500);
     const imapService = {
