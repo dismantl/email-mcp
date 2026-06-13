@@ -243,6 +243,87 @@ describe('registerEmailsTools', () => {
     );
   });
 
+  it('renders a copy-ready Unsubscribe line in get_email output', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(
+        createEmail({
+          unsubscribe: {
+            oneClick: true,
+            http: 'https://example.com/u?id=1',
+            mailto: 'mailto:unsub@example.com',
+          },
+        }),
+      ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      markRead: false,
+    });
+
+    expect(response.content[0].text).toContain(
+      'Unsubscribe: one-click=yes  http=https://example.com/u?id=1  mailto:unsub@example.com',
+    );
+  });
+
+  it('omits the Unsubscribe line when the message has no List-Unsubscribe header', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createEmail()),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      markRead: false,
+    });
+
+    expect(response.content[0].text).not.toContain('Unsubscribe:');
+  });
+
+  it('renders the Unsubscribe line in get_emails output', async () => {
+    const server = createServer();
+    const imapService = {
+      getEmail: vi
+        .fn()
+        .mockResolvedValue(
+          createEmail({ unsubscribe: { oneClick: false, mailto: 'mailto:unsub@example.com' } }),
+        ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_emails',
+    )({
+      account: 'test',
+      ids: ['2'],
+      mailbox: 'INBOX',
+      format: 'text',
+    });
+
+    expect(response.content[0].text).toContain(
+      'Unsubscribe: one-click=no  mailto:unsub@example.com',
+    );
+  });
+
   it('omits absent reply metadata while keeping one blank line before the body', async () => {
     const server = createServer();
     const imapService = {

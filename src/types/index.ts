@@ -2,6 +2,8 @@
  * Shared TypeScript types for the Email MCP Server.
  */
 
+import type { ParsedUnsubscribe } from '../utils/list-unsubscribe.js';
+
 // ---------------------------------------------------------------------------
 // Address
 // ---------------------------------------------------------------------------
@@ -195,6 +197,8 @@ export interface Email extends EmailMeta {
   bodyHtml?: string;
   attachments: AttachmentMeta[];
   headers: Record<string, string>;
+  /** Parsed RFC 2369 / RFC 8058 unsubscribe target, when the message carries List-Unsubscribe. */
+  unsubscribe?: ParsedUnsubscribe;
 }
 
 // ---------------------------------------------------------------------------

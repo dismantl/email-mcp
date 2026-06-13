@@ -22,6 +22,7 @@ import type {
   QuotaInfo,
   SenderStat,
 } from '../types/index.js';
+import { parseListUnsubscribe } from '../utils/list-unsubscribe.js';
 import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import type { LabelStrategy } from './label-strategy.js';
 import { detectLabelStrategy } from './label-strategy.js';
@@ -257,6 +258,7 @@ async function messageToEmail(
     bodyHtml,
     attachments: extractAttachments(msg.bodyStructure),
     headers,
+    unsubscribe: parseListUnsubscribe(headers),
   };
 }
 
