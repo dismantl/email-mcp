@@ -324,6 +324,39 @@ describe('registerEmailsTools', () => {
     );
   });
 
+  it('keeps the Unsubscribe line under maxLength truncation (Naomi triage call shape)', async () => {
+    // Naomi reads triage mail via get_emails(format="text", maxLength=4000).
+    // The line is metadata emitted before the body, so body truncation must not drop it.
+    const server = createServer();
+    const longBody = 'x'.repeat(500);
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(
+        createEmail({
+          bodyText: longBody,
+          unsubscribe: { oneClick: true, http: 'https://example.com/u?id=1' },
+        }),
+      ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_emails',
+    )({
+      account: 'test',
+      ids: ['2'],
+      mailbox: 'INBOX',
+      format: 'text',
+      maxLength: 100,
+    });
+
+    const { text } = response.content[0];
+    expect(text).toContain('Unsubscribe: one-click=yes  http=https://example.com/u?id=1');
+    // Body was actually truncated, proving the line survives independently of body size.
+    expect(text).toContain('more characters — increase maxLength');
+  });
+
   it('omits absent reply metadata while keeping one blank line before the body', async () => {
     const server = createServer();
     const imapService = {
