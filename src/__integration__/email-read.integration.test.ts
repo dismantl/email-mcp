@@ -99,6 +99,39 @@ describe('Email Read Operations', () => {
       expect(email.threadId).toBeTruthy();
       expect(email.references).toBeInstanceOf(Array);
     });
+
+    it('surfaces a parsed RFC 8058 one-click unsubscribe target from List-Unsubscribe headers', async () => {
+      const subject = 'Unsub one-click roundtrip';
+      await seedEmail({
+        subject,
+        headers: {
+          'List-Unsubscribe': '<https://example.com/u?id=roundtrip>, <mailto:unsub@example.com>',
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
+      });
+      await waitForDelivery();
+
+      const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, { subject });
+      const emailId = list.items[0].id;
+      const email = await services.imapService.getEmail(TEST_ACCOUNT_NAME, emailId);
+
+      expect(email.unsubscribe).toEqual({
+        oneClick: true,
+        http: 'https://example.com/u?id=roundtrip',
+        mailto: 'mailto:unsub@example.com',
+      });
+    });
+
+    it('leaves unsubscribe undefined when no List-Unsubscribe header is present', async () => {
+      const subject = 'No unsub header';
+      await seedEmail({ subject });
+      await waitForDelivery();
+
+      const list = await services.imapService.listEmails(TEST_ACCOUNT_NAME, { subject });
+      const email = await services.imapService.getEmail(TEST_ACCOUNT_NAME, list.items[0].id);
+
+      expect(email.unsubscribe).toBeUndefined();
+    });
   });
 
   // ---------------------------------------------------------------------------

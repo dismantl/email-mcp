@@ -188,6 +188,16 @@ export interface AttachmentMeta {
   size: number;
 }
 
+/** Parsed RFC 2369 / RFC 8058 List-Unsubscribe target. See utils/list-unsubscribe.ts. */
+export interface ParsedUnsubscribe {
+  /** True only when an http(s) target exists AND List-Unsubscribe-Post advertises one-click (RFC 8058). */
+  oneClick: boolean;
+  /** First valid http(s) unsubscribe URI, verbatim. */
+  http?: string;
+  /** First valid mailto: unsubscribe URI, verbatim (scheme and query preserved). */
+  mailto?: string;
+}
+
 export interface Email extends EmailMeta {
   cc?: EmailAddress[];
   bcc?: EmailAddress[];
@@ -195,6 +205,8 @@ export interface Email extends EmailMeta {
   bodyHtml?: string;
   attachments: AttachmentMeta[];
   headers: Record<string, string>;
+  /** Parsed RFC 2369 / RFC 8058 unsubscribe target, when the message carries List-Unsubscribe. */
+  unsubscribe?: ParsedUnsubscribe;
 }
 
 // ---------------------------------------------------------------------------

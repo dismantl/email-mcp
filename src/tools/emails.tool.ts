@@ -119,6 +119,19 @@ function formatEmailStatus(email: Pick<Email, 'seen' | 'flagged' | 'answered' | 
   return `${parts.join(' · ')}${labelStr}`;
 }
 
+/**
+ * Renders the parsed unsubscribe target as an explicit, copy-ready line.
+ * Returns undefined when the message carries no List-Unsubscribe header.
+ */
+function formatUnsubscribe(email: Pick<Email, 'unsubscribe'>): string | undefined {
+  const u = email.unsubscribe;
+  if (!u) return undefined;
+  const bits = [u.oneClick ? 'one-click=yes' : 'one-click=no'];
+  if (u.http) bits.push(`http=${u.http}`);
+  if (u.mailto) bits.push(u.mailto);
+  return `Unsubscribe: ${bits.join('  ')}`;
+}
+
 // ---------------------------------------------------------------------------
 
 export default function registerEmailsTools(server: McpServer, imapService: ImapService): void {
@@ -204,7 +217,10 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
       'Does NOT mark the email as seen (uses IMAP BODY.PEEK — non-destructive). ' +
       'Use format="text" to strip HTML, or format="stripped" to also remove quoted replies and signatures. ' +
       'Use maxLength to cap the body size for large emails. ' +
-      'Set markRead=true only when you want to explicitly mark the email as read.',
+      'Set markRead=true only when you want to explicitly mark the email as read. ' +
+      'When the message carries a List-Unsubscribe header, an "Unsubscribe:" line reports the ' +
+      'authoritative target (one-click=yes/no, http=URL, mailto: URI) — use those values verbatim ' +
+      'rather than guessing an unsubscribe target from the body.',
     {
       account: z.string().describe('Account name from list_accounts'),
       emailId: z.string().describe('Email ID from list_emails or search_emails'),
@@ -272,6 +288,11 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           parts.push(`Refs:   ${email.references.join(' ')}`);
         }
 
+        const unsubLine = formatUnsubscribe(email);
+        if (unsubLine) {
+          parts.push(unsubLine);
+        }
+
         if (email.attachments.length > 0) {
           parts.push(
             `📎 Attachments: ${email.attachments.map((a) => `${a.filename} (${a.mimeType}, ${formatSize(a.size)})`).join(', ')}`,
@@ -312,7 +333,9 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
     'Fetch the full content of multiple emails in a single call (max 20). ' +
       'More efficient than calling get_email repeatedly when triaging or summarising several emails. ' +
       'Does NOT mark emails as seen. ' +
-      'Defaults to format="text" (HTML stripped) for compact, AI-friendly output.',
+      'Defaults to format="text" (HTML stripped) for compact, AI-friendly output. ' +
+      'Each email includes an "Unsubscribe:" line when it carries a List-Unsubscribe header — ' +
+      'use those values verbatim as the unsubscribe target rather than guessing from the body.',
     {
       account: z.string().describe('Account name from list_accounts'),
       ids: z
@@ -376,6 +399,11 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
           if (email.references?.length) {
             metadataLines.push(`References: ${email.references.join(' ')}`);
+          }
+
+          const unsubLine = formatUnsubscribe(email);
+          if (unsubLine) {
+            metadataLines.push(unsubLine);
           }
 
           if (attachLine) {
