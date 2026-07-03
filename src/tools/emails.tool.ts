@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 import type { Email, EmailMeta } from '../types/index.js';
+import { listEmailsOutputSchema, toEmailSummaryPayload } from './output-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -138,31 +139,35 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
   // ---------------------------------------------------------------------------
   // list_emails
   // ---------------------------------------------------------------------------
-  server.tool(
+  server.registerTool(
     'list_emails',
-    'List emails in a mailbox with optional filters. Returns paginated results with metadata ' +
-      '(read/unread 🔵, flagged ⭐, replied ↩️, attachments 📎, labels 🏷️). ' +
-      'Use get_email to fetch full body content. ' +
-      'ProtonMail note: labels are represented as IMAP folders — use list_labels to discover them, ' +
-      'then list_emails with mailbox="Labels/X" to find labeled emails.',
     {
-      account: z.string().describe('Account name from list_accounts'),
-      mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
-      page: z.number().int().min(1).default(1).describe('Page number'),
-      pageSize: z.number().int().min(1).max(100).default(20).describe('Results per page'),
-      since: z.string().optional().describe('Show emails after this date (ISO 8601)'),
-      before: z.string().optional().describe('Show emails before this date (ISO 8601)'),
-      from: z.string().optional().describe('Filter by sender address or name'),
-      subject: z.string().optional().describe('Filter by subject keyword'),
-      seen: z.boolean().optional().describe('Filter: true=read only, false=unread only'),
-      flagged: z.boolean().optional().describe('Filter: true=flagged only, false=unflagged only'),
-      has_attachment: z
-        .boolean()
-        .optional()
-        .describe('Filter: true=has attachments, false=no attachments'),
-      answered: z.boolean().optional().describe('Filter: true=replied, false=not yet replied'),
+      description:
+        'List emails in a mailbox with optional filters. Returns paginated results with metadata ' +
+        '(read/unread 🔵, flagged ⭐, replied ↩️, attachments 📎, labels 🏷️). ' +
+        'Use get_email to fetch full body content. ' +
+        'ProtonMail note: labels are represented as IMAP folders — use list_labels to discover them, ' +
+        'then list_emails with mailbox="Labels/X" to find labeled emails.',
+      inputSchema: {
+        account: z.string().describe('Account name from list_accounts'),
+        mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+        page: z.number().int().min(1).default(1).describe('Page number'),
+        pageSize: z.number().int().min(1).max(100).default(20).describe('Results per page'),
+        since: z.string().optional().describe('Show emails after this date (ISO 8601)'),
+        before: z.string().optional().describe('Show emails before this date (ISO 8601)'),
+        from: z.string().optional().describe('Filter by sender address or name'),
+        subject: z.string().optional().describe('Filter by subject keyword'),
+        seen: z.boolean().optional().describe('Filter: true=read only, false=unread only'),
+        flagged: z.boolean().optional().describe('Filter: true=flagged only, false=unflagged only'),
+        has_attachment: z
+          .boolean()
+          .optional()
+          .describe('Filter: true=has attachments, false=no attachments'),
+        answered: z.boolean().optional().describe('Filter: true=replied, false=not yet replied'),
+      },
+      outputSchema: listEmailsOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
-    { readOnlyHint: true, destructiveHint: false },
     async (params) => {
       try {
         const result = await imapService.listEmails(params.account, {
@@ -179,9 +184,18 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           answered: params.answered,
         });
 
+        const structuredContent = {
+          mailbox: params.mailbox,
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          emails: result.items.map((email) => toEmailSummaryPayload(email, params.mailbox)),
+        };
+
         if (result.items.length === 0) {
           return {
             content: [{ type: 'text' as const, text: 'No emails found matching the criteria.' }],
+            structuredContent,
           };
         }
 
@@ -193,6 +207,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
         return {
           content: [{ type: 'text' as const, text: `${header}\n${emails}` }],
+          structuredContent,
         };
       } catch (err) {
         return {
