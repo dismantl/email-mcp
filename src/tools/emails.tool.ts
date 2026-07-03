@@ -7,6 +7,12 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 import type { Email, EmailMeta } from '../types/index.js';
+import {
+  getEmailOutputSchema,
+  listEmailsOutputSchema,
+  toEmailDetailPayload,
+  toEmailSummaryPayload,
+} from './output-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -138,31 +144,35 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
   // ---------------------------------------------------------------------------
   // list_emails
   // ---------------------------------------------------------------------------
-  server.tool(
+  server.registerTool(
     'list_emails',
-    'List emails in a mailbox with optional filters. Returns paginated results with metadata ' +
-      '(read/unread 🔵, flagged ⭐, replied ↩️, attachments 📎, labels 🏷️). ' +
-      'Use get_email to fetch full body content. ' +
-      'ProtonMail note: labels are represented as IMAP folders — use list_labels to discover them, ' +
-      'then list_emails with mailbox="Labels/X" to find labeled emails.',
     {
-      account: z.string().describe('Account name from list_accounts'),
-      mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
-      page: z.number().int().min(1).default(1).describe('Page number'),
-      pageSize: z.number().int().min(1).max(100).default(20).describe('Results per page'),
-      since: z.string().optional().describe('Show emails after this date (ISO 8601)'),
-      before: z.string().optional().describe('Show emails before this date (ISO 8601)'),
-      from: z.string().optional().describe('Filter by sender address or name'),
-      subject: z.string().optional().describe('Filter by subject keyword'),
-      seen: z.boolean().optional().describe('Filter: true=read only, false=unread only'),
-      flagged: z.boolean().optional().describe('Filter: true=flagged only, false=unflagged only'),
-      has_attachment: z
-        .boolean()
-        .optional()
-        .describe('Filter: true=has attachments, false=no attachments'),
-      answered: z.boolean().optional().describe('Filter: true=replied, false=not yet replied'),
+      description:
+        'List emails in a mailbox with optional filters. Returns paginated results with metadata ' +
+        '(read/unread 🔵, flagged ⭐, replied ↩️, attachments 📎, labels 🏷️). ' +
+        'Use get_email to fetch full body content. ' +
+        'ProtonMail note: labels are represented as IMAP folders — use list_labels to discover them, ' +
+        'then list_emails with mailbox="Labels/X" to find labeled emails.',
+      inputSchema: {
+        account: z.string().describe('Account name from list_accounts'),
+        mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+        page: z.number().int().min(1).default(1).describe('Page number'),
+        pageSize: z.number().int().min(1).max(100).default(20).describe('Results per page'),
+        since: z.string().optional().describe('Show emails after this date (ISO 8601)'),
+        before: z.string().optional().describe('Show emails before this date (ISO 8601)'),
+        from: z.string().optional().describe('Filter by sender address or name'),
+        subject: z.string().optional().describe('Filter by subject keyword'),
+        seen: z.boolean().optional().describe('Filter: true=read only, false=unread only'),
+        flagged: z.boolean().optional().describe('Filter: true=flagged only, false=unflagged only'),
+        has_attachment: z
+          .boolean()
+          .optional()
+          .describe('Filter: true=has attachments, false=no attachments'),
+        answered: z.boolean().optional().describe('Filter: true=replied, false=not yet replied'),
+      },
+      outputSchema: listEmailsOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
-    { readOnlyHint: true, destructiveHint: false },
     async (params) => {
       try {
         const result = await imapService.listEmails(params.account, {
@@ -179,9 +189,18 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           answered: params.answered,
         });
 
+        const structuredContent = {
+          mailbox: params.mailbox,
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          emails: result.items.map((email) => toEmailSummaryPayload(email, params.mailbox)),
+        };
+
         if (result.items.length === 0) {
           return {
             content: [{ type: 'text' as const, text: 'No emails found matching the criteria.' }],
+            structuredContent,
           };
         }
 
@@ -193,6 +212,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
         return {
           content: [{ type: 'text' as const, text: `${header}\n${emails}` }],
+          structuredContent,
         };
       } catch (err) {
         return {
@@ -211,45 +231,49 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
   // ---------------------------------------------------------------------------
   // get_email
   // ---------------------------------------------------------------------------
-  server.tool(
+  server.registerTool(
     'get_email',
-    'Get the full content of a specific email by ID. ' +
-      'Does NOT mark the email as seen (uses IMAP BODY.PEEK — non-destructive). ' +
-      'Use format="text" to strip HTML, or format="stripped" to also remove quoted replies and signatures. ' +
-      'Use maxLength to cap the body size for large emails. ' +
-      'Set markRead=true only when you want to explicitly mark the email as read. ' +
-      'When the message carries a List-Unsubscribe header, an "Unsubscribe:" line reports the ' +
-      'authoritative target (one-click=yes/no, http=URL, mailto: URI) — use those values verbatim ' +
-      'rather than guessing an unsubscribe target from the body.',
     {
-      account: z.string().describe('Account name from list_accounts'),
-      emailId: z.string().describe('Email ID from list_emails or search_emails'),
-      mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
-      uidValidity: uidValiditySchema
-        .optional()
-        .describe('Required when markRead=true; get from list_emails or search_emails'),
-      format: z
-        .enum(['full', 'text', 'stripped'])
-        .default('full')
-        .describe(
-          'Body format: full=raw (default), text=plain text (strips HTML), stripped=plain text without quoted replies or signatures',
-        ),
-      maxLength: z
-        .number()
-        .int()
-        .min(100)
-        .optional()
-        .describe(
-          'Truncate body at this many characters. A hint shows how many characters remain.',
-        ),
-      markRead: z
-        .boolean()
-        .default(false)
-        .describe(
-          'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
-        ),
+      description:
+        'Get the full content of a specific email by ID. ' +
+        'Does NOT mark the email as seen (uses IMAP BODY.PEEK — non-destructive). ' +
+        'Use format="text" to strip HTML, or format="stripped" to also remove quoted replies and signatures. ' +
+        'Use maxLength to cap the body size for large emails. ' +
+        'Set markRead=true only when you want to explicitly mark the email as read. ' +
+        'When the message carries a List-Unsubscribe header, an "Unsubscribe:" line reports the ' +
+        'authoritative target (one-click=yes/no, http=URL, mailto: URI) — use those values verbatim ' +
+        'rather than guessing an unsubscribe target from the body.',
+      inputSchema: {
+        account: z.string().describe('Account name from list_accounts'),
+        emailId: z.string().describe('Email ID from list_emails or search_emails'),
+        mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+        uidValidity: uidValiditySchema
+          .optional()
+          .describe('Required when markRead=true; get from list_emails or search_emails'),
+        format: z
+          .enum(['full', 'text', 'stripped'])
+          .default('full')
+          .describe(
+            'Body format: full=raw (default), text=plain text (strips HTML), stripped=plain text without quoted replies or signatures',
+          ),
+        maxLength: z
+          .number()
+          .int()
+          .min(100)
+          .optional()
+          .describe(
+            'Truncate body at this many characters. A hint shows how many characters remain.',
+          ),
+        markRead: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
+          ),
+      },
+      outputSchema: getEmailOutputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    { readOnlyHint: false, destructiveHint: false },
     async ({ account, emailId, mailbox, uidValidity, format, maxLength, markRead }) => {
       try {
         let readUidValidity: string | undefined;
@@ -299,17 +323,25 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           );
         }
 
-        parts.push('', '--- Body ---', '');
-        parts.push(
-          applyBodyFormat(email.bodyText, email.bodyHtml, format as BodyFormat, maxLength),
+        const body = applyBodyFormat(
+          email.bodyText,
+          email.bodyHtml,
+          format as BodyFormat,
+          maxLength,
         );
+
+        parts.push('', '--- Body ---', '');
+        parts.push(body);
 
         if (readUidValidity !== undefined) {
           await imapService.setFlags(account, emailId, mailbox, 'read', readUidValidity);
         }
 
+        const structuredEmail = readUidValidity !== undefined ? { ...email, seen: true } : email;
+
         return {
           content: [{ type: 'text' as const, text: parts.join('\n') }],
+          structuredContent: toEmailDetailPayload(structuredEmail, mailbox, body),
         };
       } catch (err) {
         return {

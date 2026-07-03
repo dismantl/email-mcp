@@ -2,28 +2,47 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type ImapService from '../services/imap.service.js';
 import type { Email, EmailMeta, PaginatedResult } from '../types/index.js';
 import registerEmailsTools from './emails.tool.js';
+import { getEmailOutputSchema, listEmailsOutputSchema } from './output-schemas.js';
 
 type ToolHandler = (params: Record<string, unknown>) => Promise<{
   content: { type: 'text'; text: string }[];
   isError?: boolean;
+  structuredContent?: unknown;
 }>;
 
 function createServer() {
   return {
     tool: vi.fn(),
-  } as unknown as McpServer & { tool: ReturnType<typeof vi.fn> };
+    registerTool: vi.fn(),
+  } as unknown as McpServer & {
+    tool: ReturnType<typeof vi.fn>;
+    registerTool: ReturnType<typeof vi.fn>;
+  };
 }
 
 function getHandler(server: ReturnType<typeof createServer>, name: string): ToolHandler {
-  const call = server.tool.mock.calls.find(([toolName]) => toolName === name);
-  if (!call) throw new Error(`Tool not registered: ${name}`);
-  return call[4] as ToolHandler;
+  const toolCall = server.tool.mock.calls.find(([toolName]) => toolName === name);
+  if (toolCall) return toolCall[4] as ToolHandler;
+
+  const registerToolCall = server.registerTool.mock.calls.find(([toolName]) => toolName === name);
+  if (registerToolCall) return registerToolCall[2] as ToolHandler;
+
+  throw new Error(`Tool not registered: ${name}`);
 }
 
 function getToolOptions(server: ReturnType<typeof createServer>, name: string) {
-  const call = server.tool.mock.calls.find(([toolName]) => toolName === name);
-  if (!call) throw new Error(`Tool not registered: ${name}`);
-  return call[3] as { readOnlyHint?: boolean; destructiveHint?: boolean };
+  const toolCall = server.tool.mock.calls.find(([toolName]) => toolName === name);
+  if (toolCall) return toolCall[3] as { readOnlyHint?: boolean; destructiveHint?: boolean };
+
+  const registerToolCall = server.registerTool.mock.calls.find(([toolName]) => toolName === name);
+  if (registerToolCall) {
+    return registerToolCall[1].annotations as {
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+    };
+  }
+
+  throw new Error(`Tool not registered: ${name}`);
 }
 
 function createEmailMeta(overrides: Partial<EmailMeta> = {}): EmailMeta {
@@ -140,6 +159,58 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
+  it('returns structured output from list_emails without changing rendered text', async () => {
+    const server = createServer();
+    const result: PaginatedResult<EmailMeta> = {
+      items: [createEmailMeta()],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    };
+    const imapService = {
+      listEmails: vi.fn().mockResolvedValue(result),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'list_emails',
+    )({
+      account: 'test',
+      mailbox: 'INBOX',
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(response.content[0].text).toBe(
+      '📬 [INBOX] 1 emails (page 1/1)\n\n' +
+        '[2] 🔵 ↩️ Thread update\n' +
+        '  From: Sender <sender@example.com> | 2026-06-10T12:00:00.000Z\n' +
+        '  UIDVALIDITY: 12345\n' +
+        '  Message-ID: <reply@example.com>\n' +
+        '  Thread-ID: <root@example.com>\n' +
+        '  A short preview',
+    );
+
+    expect(listEmailsOutputSchema.parse(response.structuredContent)).toMatchObject({
+      mailbox: 'INBOX',
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      emails: [
+        {
+          id: '2',
+          mailbox: 'INBOX',
+          uidValidity: '12345',
+          messageId: '<reply@example.com>',
+          threadId: '<root@example.com>',
+        },
+      ],
+    });
+  });
+
   it('renders thread id and references in get_email output', async () => {
     const server = createServer();
     const imapService = {
@@ -166,6 +237,83 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
+  it('returns structured output from get_email without changing rendered text', async () => {
+    const server = createServer();
+    const bodyText = 'x'.repeat(120);
+    const renderedBody = `${'x'.repeat(100)}\n\n… (20 more characters — increase maxLength to read the full body)`;
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(
+        createEmail({
+          cc: [{ name: 'Copied', address: 'copied@example.com' }],
+          bodyText,
+          attachments: [{ filename: 'report.pdf', mimeType: 'application/pdf', size: 2048 }],
+          unsubscribe: {
+            oneClick: true,
+            http: 'https://example.com/u?id=1',
+            mailto: 'mailto:unsub@example.com',
+          },
+        }),
+      ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      maxLength: 100,
+      markRead: false,
+    });
+
+    expect(response.content[0].text).toBe(
+      [
+        '📧 Thread update',
+        'Status: 🔵 Unread · ↩️ Replied',
+        'From:   Sender <sender@example.com>',
+        'To:     Recipient <recipient@example.com>',
+        'CC:     copied@example.com',
+        'Date:   2026-06-10T12:00:00.000Z',
+        'Mailbox: INBOX',
+        'UID:    2',
+        'UIDVALIDITY: 12345',
+        'Message-ID: <reply@example.com>',
+        'Thread: <root@example.com>',
+        'Reply:  <parent@example.com>',
+        'Refs:   <root@example.com> <parent@example.com>',
+        'Unsubscribe: one-click=yes  http=https://example.com/u?id=1  mailto:unsub@example.com',
+        '📎 Attachments: report.pdf (application/pdf, 2.0KB)',
+        '',
+        '--- Body ---',
+        '',
+        renderedBody,
+      ].join('\n'),
+    );
+
+    expect(getEmailOutputSchema.parse(response.structuredContent)).toMatchObject({
+      id: '2',
+      mailbox: 'INBOX',
+      uidValidity: '12345',
+      messageId: '<reply@example.com>',
+      threadId: '<root@example.com>',
+      to: [{ name: 'Recipient', address: 'recipient@example.com' }],
+      cc: [{ name: 'Copied', address: 'copied@example.com' }],
+      inReplyTo: '<parent@example.com>',
+      references: ['<root@example.com>', '<parent@example.com>'],
+      unsubscribe: {
+        oneClick: true,
+        http: 'https://example.com/u?id=1',
+        mailto: 'mailto:unsub@example.com',
+      },
+      attachments: [{ filename: 'report.pdf', mimeType: 'application/pdf', size: 2048 }],
+      body: renderedBody,
+    });
+  });
+
   it('uses the caller UIDVALIDITY when get_email marks the message read', async () => {
     const server = createServer();
     const imapService = {
@@ -190,6 +338,7 @@ describe('registerEmailsTools', () => {
     expect(response.isError).toBeUndefined();
     expect(imapService.getEmail).toHaveBeenCalledWith('test', '2', 'INBOX', '67890');
     expect(imapService.setFlags).toHaveBeenCalledWith('test', '2', 'INBOX', 'read', '67890');
+    expect(getEmailOutputSchema.parse(response.structuredContent).seen).toBe(true);
   });
 
   it('rejects markRead without caller UIDVALIDITY before fetching the message', async () => {
