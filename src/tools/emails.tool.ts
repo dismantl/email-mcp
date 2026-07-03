@@ -7,7 +7,12 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 import type { Email, EmailMeta } from '../types/index.js';
-import { listEmailsOutputSchema, toEmailSummaryPayload } from './output-schemas.js';
+import {
+  getEmailOutputSchema,
+  listEmailsOutputSchema,
+  toEmailDetailPayload,
+  toEmailSummaryPayload,
+} from './output-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -226,45 +231,49 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
   // ---------------------------------------------------------------------------
   // get_email
   // ---------------------------------------------------------------------------
-  server.tool(
+  server.registerTool(
     'get_email',
-    'Get the full content of a specific email by ID. ' +
-      'Does NOT mark the email as seen (uses IMAP BODY.PEEK — non-destructive). ' +
-      'Use format="text" to strip HTML, or format="stripped" to also remove quoted replies and signatures. ' +
-      'Use maxLength to cap the body size for large emails. ' +
-      'Set markRead=true only when you want to explicitly mark the email as read. ' +
-      'When the message carries a List-Unsubscribe header, an "Unsubscribe:" line reports the ' +
-      'authoritative target (one-click=yes/no, http=URL, mailto: URI) — use those values verbatim ' +
-      'rather than guessing an unsubscribe target from the body.',
     {
-      account: z.string().describe('Account name from list_accounts'),
-      emailId: z.string().describe('Email ID from list_emails or search_emails'),
-      mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
-      uidValidity: uidValiditySchema
-        .optional()
-        .describe('Required when markRead=true; get from list_emails or search_emails'),
-      format: z
-        .enum(['full', 'text', 'stripped'])
-        .default('full')
-        .describe(
-          'Body format: full=raw (default), text=plain text (strips HTML), stripped=plain text without quoted replies or signatures',
-        ),
-      maxLength: z
-        .number()
-        .int()
-        .min(100)
-        .optional()
-        .describe(
-          'Truncate body at this many characters. A hint shows how many characters remain.',
-        ),
-      markRead: z
-        .boolean()
-        .default(false)
-        .describe(
-          'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
-        ),
+      description:
+        'Get the full content of a specific email by ID. ' +
+        'Does NOT mark the email as seen (uses IMAP BODY.PEEK — non-destructive). ' +
+        'Use format="text" to strip HTML, or format="stripped" to also remove quoted replies and signatures. ' +
+        'Use maxLength to cap the body size for large emails. ' +
+        'Set markRead=true only when you want to explicitly mark the email as read. ' +
+        'When the message carries a List-Unsubscribe header, an "Unsubscribe:" line reports the ' +
+        'authoritative target (one-click=yes/no, http=URL, mailto: URI) — use those values verbatim ' +
+        'rather than guessing an unsubscribe target from the body.',
+      inputSchema: {
+        account: z.string().describe('Account name from list_accounts'),
+        emailId: z.string().describe('Email ID from list_emails or search_emails'),
+        mailbox: z.string().default('INBOX').describe('Mailbox path (default: INBOX)'),
+        uidValidity: uidValiditySchema
+          .optional()
+          .describe('Required when markRead=true; get from list_emails or search_emails'),
+        format: z
+          .enum(['full', 'text', 'stripped'])
+          .default('full')
+          .describe(
+            'Body format: full=raw (default), text=plain text (strips HTML), stripped=plain text without quoted replies or signatures',
+          ),
+        maxLength: z
+          .number()
+          .int()
+          .min(100)
+          .optional()
+          .describe(
+            'Truncate body at this many characters. A hint shows how many characters remain.',
+          ),
+        markRead: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Explicitly mark the email as read after fetching (default: false — reading is non-destructive by default)',
+          ),
+      },
+      outputSchema: getEmailOutputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    { readOnlyHint: false, destructiveHint: false },
     async ({ account, emailId, mailbox, uidValidity, format, maxLength, markRead }) => {
       try {
         let readUidValidity: string | undefined;
@@ -314,10 +323,15 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           );
         }
 
-        parts.push('', '--- Body ---', '');
-        parts.push(
-          applyBodyFormat(email.bodyText, email.bodyHtml, format as BodyFormat, maxLength),
+        const body = applyBodyFormat(
+          email.bodyText,
+          email.bodyHtml,
+          format as BodyFormat,
+          maxLength,
         );
+
+        parts.push('', '--- Body ---', '');
+        parts.push(body);
 
         if (readUidValidity !== undefined) {
           await imapService.setFlags(account, emailId, mailbox, 'read', readUidValidity);
@@ -325,6 +339,7 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
 
         return {
           content: [{ type: 'text' as const, text: parts.join('\n') }],
+          structuredContent: toEmailDetailPayload(email, mailbox, body),
         };
       } catch (err) {
         return {

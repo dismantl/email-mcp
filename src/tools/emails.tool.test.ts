@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type ImapService from '../services/imap.service.js';
 import type { Email, EmailMeta, PaginatedResult } from '../types/index.js';
 import registerEmailsTools from './emails.tool.js';
-import { listEmailsOutputSchema } from './output-schemas.js';
+import { getEmailOutputSchema, listEmailsOutputSchema } from './output-schemas.js';
 
 type ToolHandler = (params: Record<string, unknown>) => Promise<{
   content: { type: 'text'; text: string }[];
@@ -235,6 +235,83 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('Mailbox: INBOX');
     expect(response.content[0].text).toContain('UID:    2');
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
+  });
+
+  it('returns structured output from get_email without changing rendered text', async () => {
+    const server = createServer();
+    const bodyText = 'x'.repeat(120);
+    const renderedBody = `${'x'.repeat(100)}\n\n… (20 more characters — increase maxLength to read the full body)`;
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(
+        createEmail({
+          cc: [{ name: 'Copied', address: 'copied@example.com' }],
+          bodyText,
+          attachments: [{ filename: 'report.pdf', mimeType: 'application/pdf', size: 2048 }],
+          unsubscribe: {
+            oneClick: true,
+            http: 'https://example.com/u?id=1',
+            mailto: 'mailto:unsub@example.com',
+          },
+        }),
+      ),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      maxLength: 100,
+      markRead: false,
+    });
+
+    expect(response.content[0].text).toBe(
+      [
+        '📧 Thread update',
+        'Status: 🔵 Unread · ↩️ Replied',
+        'From:   Sender <sender@example.com>',
+        'To:     Recipient <recipient@example.com>',
+        'CC:     copied@example.com',
+        'Date:   2026-06-10T12:00:00.000Z',
+        'Mailbox: INBOX',
+        'UID:    2',
+        'UIDVALIDITY: 12345',
+        'Message-ID: <reply@example.com>',
+        'Thread: <root@example.com>',
+        'Reply:  <parent@example.com>',
+        'Refs:   <root@example.com> <parent@example.com>',
+        'Unsubscribe: one-click=yes  http=https://example.com/u?id=1  mailto:unsub@example.com',
+        '📎 Attachments: report.pdf (application/pdf, 2.0KB)',
+        '',
+        '--- Body ---',
+        '',
+        renderedBody,
+      ].join('\n'),
+    );
+
+    expect(getEmailOutputSchema.parse(response.structuredContent)).toMatchObject({
+      id: '2',
+      mailbox: 'INBOX',
+      uidValidity: '12345',
+      messageId: '<reply@example.com>',
+      threadId: '<root@example.com>',
+      to: [{ name: 'Recipient', address: 'recipient@example.com' }],
+      cc: [{ name: 'Copied', address: 'copied@example.com' }],
+      inReplyTo: '<parent@example.com>',
+      references: ['<root@example.com>', '<parent@example.com>'],
+      unsubscribe: {
+        oneClick: true,
+        http: 'https://example.com/u?id=1',
+        mailto: 'mailto:unsub@example.com',
+      },
+      attachments: [{ filename: 'report.pdf', mimeType: 'application/pdf', size: 2048 }],
+      body: renderedBody,
+    });
   });
 
   it('uses the caller UIDVALIDITY when get_email marks the message read', async () => {
