@@ -83,10 +83,10 @@ No Node.js required — just Docker.
 docker pull ghcr.io/codefuturist/email-mcp:latest
 
 # Pin to an exact version (immutable)
-docker pull ghcr.io/codefuturist/email-mcp:0.2.3
+docker pull ghcr.io/codefuturist/email-mcp:0.4.0
 
 # Auto-update patches within a minor version
-docker pull ghcr.io/codefuturist/email-mcp:0.2
+docker pull ghcr.io/codefuturist/email-mcp:0.4
 
 # Track a major version (won't cross breaking-change boundary)
 docker pull ghcr.io/codefuturist/email-mcp:0
