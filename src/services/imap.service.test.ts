@@ -200,10 +200,10 @@ describe('ImapService', () => {
       client.search.mockImplementation(async (criteria: Record<string, unknown>) => {
         const header = criteria.header as Record<string, string> | undefined;
         if (!header) return [];
-        if (header['Message-ID'] === '<reply@example.com>') return [2];
-        if (header['Message-ID'] === '<root@example.com>') return [1];
-        if (header.References === '<root@example.com>') return [2];
-        if (header['In-Reply-To'] === '<root@example.com>') return [2];
+        if (header['message-id'] === '<reply@example.com>') return [2];
+        if (header['message-id'] === '<root@example.com>') return [1];
+        if (header.references === '<root@example.com>') return [2];
+        if (header['in-reply-to'] === '<root@example.com>') return [2];
         return [];
       });
 
@@ -213,6 +213,41 @@ describe('ImapService', () => {
       expect(thread.messages.map((email) => email.threadId)).toEqual([
         '<root@example.com>',
         '<root@example.com>',
+      ]);
+    });
+
+    it('uses lowercase header names when reconstructing threads', async () => {
+      const root = createMockMessage({
+        uid: 1,
+        messageId: '<root@example.com>',
+      });
+      const reply = createMockMessage({
+        uid: 2,
+        messageId: '<reply@example.com>',
+        inReplyTo: '<root@example.com>',
+        references: ['<root@example.com>'],
+      });
+
+      client.fetchOne.mockResolvedValue(reply);
+      client.fetch.mockReturnValue(createFetchResults([root, reply]));
+      client.search.mockImplementation(async (criteria: Record<string, unknown>) => {
+        const header = criteria.header as Record<string, string> | undefined;
+        if (!header) return [];
+        if ('Message-ID' in header || 'References' in header || 'In-Reply-To' in header) {
+          throw new Error(`mixed-case header search used: ${Object.keys(header).join(', ')}`);
+        }
+        if (header['message-id'] === '<reply@example.com>') return [2];
+        if (header['message-id'] === '<root@example.com>') return [1];
+        if (header.references === '<root@example.com>') return [2];
+        if (header['in-reply-to'] === '<root@example.com>') return [2];
+        return [];
+      });
+
+      const thread = await service.getThread('test', '<reply@example.com>');
+
+      expect(thread.messages.map((email) => email.messageId)).toEqual([
+        '<root@example.com>',
+        '<reply@example.com>',
       ]);
     });
   });

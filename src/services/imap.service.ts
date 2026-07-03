@@ -1434,7 +1434,7 @@ export default class ImapService {
 
       // First, find the root message to get its References chain
       const rootSearch = await client.search(
-        { header: { 'Message-ID': messageId } },
+        { header: { 'message-id': messageId } },
         { uid: true },
       );
       const rootUids: number[] = Array.isArray(rootSearch) ? rootSearch : [];
@@ -1474,7 +1474,7 @@ export default class ImapService {
         try {
           // eslint-disable-next-line no-await-in-loop
           const searchResult = await client.search(
-            { header: { 'Message-ID': msgId } },
+            { header: { 'message-id': msgId } },
             { uid: true },
           );
           if (Array.isArray(searchResult)) {
@@ -1494,7 +1494,7 @@ export default class ImapService {
 
         try {
           // eslint-disable-next-line no-await-in-loop
-          const refSearch = await client.search({ header: { References: msgId } }, { uid: true });
+          const refSearch = await client.search({ header: { references: msgId } }, { uid: true });
           if (Array.isArray(refSearch)) {
             refSearch.forEach((uid) => {
               foundUids.add(uid);
@@ -1502,7 +1502,7 @@ export default class ImapService {
           }
           // eslint-disable-next-line no-await-in-loop
           const replySearch = await client.search(
-            { header: { 'In-Reply-To': msgId } },
+            { header: { 'in-reply-to': msgId } },
             { uid: true },
           );
           if (Array.isArray(replySearch)) {
