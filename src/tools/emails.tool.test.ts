@@ -338,6 +338,7 @@ describe('registerEmailsTools', () => {
     expect(response.isError).toBeUndefined();
     expect(imapService.getEmail).toHaveBeenCalledWith('test', '2', 'INBOX', '67890');
     expect(imapService.setFlags).toHaveBeenCalledWith('test', '2', 'INBOX', 'read', '67890');
+    expect(getEmailOutputSchema.parse(response.structuredContent).seen).toBe(true);
   });
 
   it('rejects markRead without caller UIDVALIDITY before fetching the message', async () => {

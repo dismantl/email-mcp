@@ -337,9 +337,11 @@ export default function registerEmailsTools(server: McpServer, imapService: Imap
           await imapService.setFlags(account, emailId, mailbox, 'read', readUidValidity);
         }
 
+        const structuredEmail = readUidValidity !== undefined ? { ...email, seen: true } : email;
+
         return {
           content: [{ type: 'text' as const, text: parts.join('\n') }],
-          structuredContent: toEmailDetailPayload(email, mailbox, body),
+          structuredContent: toEmailDetailPayload(structuredEmail, mailbox, body),
         };
       } catch (err) {
         return {
