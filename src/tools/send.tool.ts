@@ -6,8 +6,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import audit from '../safety/audit.js';
 import { validateInputLength } from '../safety/validation.js';
-
 import type SmtpService from '../services/smtp.service.js';
+import emailAddress from '../utils/email-address.js';
 
 const uidValiditySchema = z
   .union([z.string().min(1), z.number()])
@@ -23,11 +23,11 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
     'Send a new email. Supports plain text or HTML body, CC, and BCC.',
     {
       account: z.string().describe('Account name from list_accounts'),
-      to: z.array(z.string().email()).min(1).describe('Recipient email addresses'),
+      to: z.array(emailAddress).min(1).describe('Recipient email addresses'),
       subject: z.string().describe('Email subject'),
       body: z.string().describe('Email body content'),
-      cc: z.array(z.string().email()).optional().describe('CC recipients'),
-      bcc: z.array(z.string().email()).optional().describe('BCC recipients'),
+      cc: z.array(emailAddress).optional().describe('CC recipients'),
+      bcc: z.array(emailAddress).optional().describe('BCC recipients'),
       html: z.boolean().default(false).describe('Send as HTML (default: plain text)'),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -141,9 +141,9 @@ export default function registerSendTools(server: McpServer, smtpService: SmtpSe
       emailId: z.string().describe('Email ID to forward (from list_emails or get_email)'),
       uidValidity: uidValiditySchema,
       mailbox: z.string().default('INBOX').describe('Mailbox where the original email is'),
-      to: z.array(z.string().email()).min(1).describe('Forward to these recipients'),
+      to: z.array(emailAddress).min(1).describe('Forward to these recipients'),
       body: z.string().optional().describe('Additional message above the forwarded content'),
-      cc: z.array(z.string().email()).optional().describe('CC recipients'),
+      cc: z.array(emailAddress).optional().describe('CC recipients'),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (params) => {

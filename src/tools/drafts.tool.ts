@@ -5,9 +5,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import audit from '../safety/audit.js';
-
 import type ImapService from '../services/imap.service.js';
 import type SmtpService from '../services/smtp.service.js';
+import emailAddress from '../utils/email-address.js';
 
 const uidValiditySchema = z
   .union([z.string().min(1), z.number()])
@@ -28,13 +28,13 @@ export default function registerDraftTools(
     {
       account: z.string().describe('Account name from list_accounts'),
       to: z
-        .array(z.string().email())
+        .array(emailAddress)
         .default([])
         .describe('Recipient email addresses (can be empty for drafts)'),
       subject: z.string().describe('Email subject'),
       body: z.string().describe('Email body content'),
-      cc: z.array(z.string().email()).optional().describe('CC recipients'),
-      bcc: z.array(z.string().email()).optional().describe('BCC recipients'),
+      cc: z.array(emailAddress).optional().describe('CC recipients'),
+      bcc: z.array(emailAddress).optional().describe('BCC recipients'),
       html: z.boolean().default(false).describe('Send as HTML (default: plain text)'),
       in_reply_to: z.string().optional().describe('Message-ID for threading (from get_email)'),
     },
