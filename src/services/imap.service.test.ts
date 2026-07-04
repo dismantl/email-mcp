@@ -1,4 +1,5 @@
 import type { IConnectionManager } from '../connections/types.js';
+import { DeadlineExceededError } from '../utils/deadline.js';
 import ImapService from './imap.service.js';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ function createMockConnectionManager(mockClient: ReturnType<typeof createMockIma
     }),
     getAccountNames: vi.fn().mockReturnValue(['test']),
     getImapClient: vi.fn().mockResolvedValue(mockClient),
+    resetImapClient: vi.fn().mockResolvedValue(undefined),
     getSmtpTransport: vi.fn(),
     closeAll: vi.fn(),
   } satisfies IConnectionManager;
@@ -100,6 +102,10 @@ describe('ImapService', () => {
     client = createMockImapClient();
     connections = createMockConnectionManager(client);
     service = new ImapService(connections);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   // -----------------------------------------------------------------------
@@ -214,6 +220,38 @@ describe('ImapService', () => {
         '<root@example.com>',
         '<root@example.com>',
       ]);
+    });
+
+    it('get_thread throws DeadlineExceededError and resets the connection when a search overruns', async () => {
+      vi.stubEnv('EMAIL_MCP_THREAD_DEADLINE_MS', '30');
+      client.search.mockImplementation(async () => new Promise<never>(() => {}));
+
+      await expect(service.getThread('test', '<root@example.com>', 'INBOX')).rejects.toBeInstanceOf(
+        DeadlineExceededError,
+      );
+
+      expect(connections.resetImapClient).toHaveBeenCalledWith('test');
+    }, 250);
+
+    it('get_thread completes normally without resetting the connection', async () => {
+      const root = createMockMessage({
+        uid: 1,
+        messageId: '<root@example.com>',
+      });
+
+      client.fetchOne.mockResolvedValue(root);
+      client.fetch.mockReturnValue(createFetchResults([root]));
+      client.search.mockImplementation(async (criteria: Record<string, unknown>) => {
+        const header = criteria.header as Record<string, string> | undefined;
+        if (!header) return [];
+        if (header['Message-ID'] === '<root@example.com>') return [1];
+        return [];
+      });
+
+      const thread = await service.getThread('test', '<root@example.com>', 'INBOX');
+
+      expect(thread.messageCount).toBe(1);
+      expect(connections.resetImapClient).not.toHaveBeenCalled();
     });
   });
 
