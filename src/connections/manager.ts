@@ -106,6 +106,23 @@ export default class ConnectionManager implements IConnectionManager {
     return client;
   }
 
+  /**
+   * Force-drop the cached IMAP client so the next getImapClient rebuilds it.
+   * Used after a deadline abort because the abandoned in-flight command is still
+   * on the wire, so the connection must not be reused.
+   */
+  async resetImapClient(accountName: string): Promise<void> {
+    const existing = this.imapClients.get(accountName);
+    if (!existing) return;
+
+    this.imapClients.delete(accountName);
+    try {
+      existing.close();
+    } catch {
+      /* ignore - socket may already be broken */
+    }
+  }
+
   // -------------------------------------------------------------------------
   // SMTP
   // -------------------------------------------------------------------------
