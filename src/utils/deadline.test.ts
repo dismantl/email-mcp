@@ -20,10 +20,16 @@ describe('Deadline', () => {
       setTimeout(() => reject(new Error('boom')), 60);
     });
 
-    await expect(new Deadline(10).race(boom, 'boom')).rejects.toBeInstanceOf(DeadlineExceededError);
-    await new Promise((resolve) => {
-      setTimeout(resolve, 120);
-    });
+    try {
+      await expect(new Deadline(10).race(boom, 'boom')).rejects.toBeInstanceOf(
+        DeadlineExceededError,
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, 120);
+      });
+    } finally {
+      process.off('unhandledRejection', handler);
+    }
 
     expect(handler).not.toHaveBeenCalled();
   });
