@@ -22,6 +22,7 @@ import type {
   QuotaInfo,
   SenderStat,
 } from '../types/index.js';
+import { Deadline, DeadlineExceededError } from '../utils/deadline.js';
 import { parseListUnsubscribe } from '../utils/list-unsubscribe.js';
 import { computeThreadId, parseEmailHeaders, parseReferencesHeader } from '../utils/threading.js';
 import type { LabelStrategy } from './label-strategy.js';
@@ -1423,6 +1424,8 @@ export default class ImapService {
     messageCount: number;
   }> {
     const MAX_THREAD_MESSAGES = 50;
+    const deadline = new Deadline(Number(process.env.EMAIL_MCP_THREAD_DEADLINE_MS ?? 60_000));
+    let timedOut = false;
     const client = await this.connections.getImapClient(accountName);
     const lock = await client.getMailboxLock(mailbox);
     try {
@@ -1433,9 +1436,9 @@ export default class ImapService {
       let threadId = messageId;
 
       // First, find the root message to get its References chain
-      const rootSearch = await client.search(
-        { header: { 'Message-ID': messageId } },
-        { uid: true },
+      const rootSearch = await deadline.race(
+        client.search({ header: { 'Message-ID': messageId } }, { uid: true }),
+        'thread:root',
       );
       const rootUids: number[] = Array.isArray(rootSearch) ? rootSearch : [];
 
@@ -1473,16 +1476,17 @@ export default class ImapService {
 
         try {
           // eslint-disable-next-line no-await-in-loop
-          const searchResult = await client.search(
-            { header: { 'Message-ID': msgId } },
-            { uid: true },
+          const searchResult = await deadline.race(
+            client.search({ header: { 'Message-ID': msgId } }, { uid: true }),
+            'thread:msgid',
           );
           if (Array.isArray(searchResult)) {
             searchResult.forEach((uid) => {
               foundUids.add(uid);
             });
           }
-        } catch {
+        } catch (err) {
+          if (err instanceof DeadlineExceededError) throw err;
           // Header search may not be supported for all messages
         }
       }
@@ -1494,23 +1498,27 @@ export default class ImapService {
 
         try {
           // eslint-disable-next-line no-await-in-loop
-          const refSearch = await client.search({ header: { References: msgId } }, { uid: true });
+          const refSearch = await deadline.race(
+            client.search({ header: { References: msgId } }, { uid: true }),
+            'thread:refs',
+          );
           if (Array.isArray(refSearch)) {
             refSearch.forEach((uid) => {
               foundUids.add(uid);
             });
           }
           // eslint-disable-next-line no-await-in-loop
-          const replySearch = await client.search(
-            { header: { 'In-Reply-To': msgId } },
-            { uid: true },
+          const replySearch = await deadline.race(
+            client.search({ header: { 'In-Reply-To': msgId } }, { uid: true }),
+            'thread:inreplyto',
           );
           if (Array.isArray(replySearch)) {
             replySearch.forEach((uid) => {
               foundUids.add(uid);
             });
           }
-        } catch {
+        } catch (err) {
+          if (err instanceof DeadlineExceededError) throw err;
           // Header search may fail on some servers
         }
       }
@@ -1569,8 +1577,12 @@ export default class ImapService {
         participants: Array.from(participantMap.values()),
         messageCount: messages.length,
       };
+    } catch (err) {
+      if (err instanceof DeadlineExceededError) timedOut = true;
+      throw err;
     } finally {
       lock.release();
+      if (timedOut) await this.connections.resetImapClient(accountName);
     }
   }
 
