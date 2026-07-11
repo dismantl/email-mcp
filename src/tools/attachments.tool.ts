@@ -7,6 +7,12 @@ import { z } from 'zod';
 
 import type ImapService from '../services/imap.service.js';
 
+const TEXTUAL_MIME_TYPES = new Set(['application/json', 'application/xml']);
+
+function isTextualMimeType(mimeType: string): boolean {
+  return mimeType.startsWith('text/') || TEXTUAL_MIME_TYPES.has(mimeType.toLowerCase());
+}
+
 const uidValiditySchema = z
   .union([z.string().min(1), z.number()])
   .transform((value) => value.toString())
@@ -15,7 +21,7 @@ const uidValiditySchema = z
 export default function registerAttachmentTools(server: McpServer, imapService: ImapService): void {
   server.tool(
     'download_attachment',
-    'Download an email attachment by filename. First use get_email to see available attachments and their filenames. Returns base64-encoded content for files ≤5MB.',
+    'Download an email attachment by filename. First use get_email to see available attachments and their filenames. Returns a JSON document with decoded `text` for text attachments (e.g. .ics calendar invites) or `contentBase64` for binary files ≤5MB.',
     {
       account: z.string().describe('Account name from list_accounts'),
       id: z.string().describe('Email ID (UID) from list_emails or get_email'),
@@ -34,24 +40,27 @@ export default function registerAttachmentTools(server: McpServer, imapService: 
           uidValidity,
         );
 
+        // One self-contained JSON document: structured clients parse the first
+        // JSON text block, so content delivered in a separate prose-marker
+        // block is invisible to them. Text attachments are decoded so callers
+        // (e.g. calendar-invite parsing) can consume them directly.
+        const payload: Record<string, unknown> = {
+          filename: result.filename,
+          mimeType: result.mimeType,
+          size: result.size,
+          sizeHuman: `${Math.round(result.size / 1024)}KB`,
+        };
+        if (isTextualMimeType(result.mimeType)) {
+          payload.text = Buffer.from(result.contentBase64, 'base64').toString('utf-8');
+        } else {
+          payload.contentBase64 = result.contentBase64;
+        }
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify(
-                {
-                  filename: result.filename,
-                  mimeType: result.mimeType,
-                  size: result.size,
-                  sizeHuman: `${Math.round(result.size / 1024)}KB`,
-                },
-                null,
-                2,
-              ),
-            },
-            {
-              type: 'text' as const,
-              text: `\n--- Base64 Content ---\n${result.contentBase64}`,
+              text: JSON.stringify(payload, null, 2),
             },
           ],
         };

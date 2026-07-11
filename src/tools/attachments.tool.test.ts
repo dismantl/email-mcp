@@ -60,4 +60,69 @@ describe('registerAttachmentTools', () => {
       '12345',
     );
   });
+
+  it('returns binary attachments as a single JSON document with contentBase64', async () => {
+    const server = createServer();
+    const imapService = {
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'agenda.pdf',
+        mimeType: 'application/pdf',
+        size: 12,
+        contentBase64: 'Y29udGVudA==',
+      }),
+    } as unknown as ImapService;
+
+    registerAttachmentTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'download_attachment',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      filename: 'agenda.pdf',
+      uidValidity: '12345',
+    });
+
+    // A single JSON block: content in a prose-marker second block is invisible
+    // to structured clients that parse the first JSON document they find.
+    expect(response.content).toHaveLength(1);
+    const payload = JSON.parse(response.content[0].text) as Record<string, unknown>;
+    expect(payload.contentBase64).toBe('Y29udGVudA==');
+    expect(payload.text).toBeUndefined();
+    expect(response.content[0].text).not.toContain('--- Base64 Content ---');
+  });
+
+  it('decodes text attachments (e.g. .ics invites) into a text field', async () => {
+    const ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR';
+    const server = createServer();
+    const imapService = {
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'appointment.ics',
+        mimeType: 'text/calendar',
+        size: ics.length,
+        contentBase64: Buffer.from(ics, 'utf-8').toString('base64'),
+      }),
+    } as unknown as ImapService;
+
+    registerAttachmentTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'download_attachment',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      filename: 'appointment.ics',
+      uidValidity: '12345',
+    });
+
+    expect(response.content).toHaveLength(1);
+    const payload = JSON.parse(response.content[0].text) as Record<string, unknown>;
+    expect(payload.text).toBe(ics);
+    expect(payload.contentBase64).toBeUndefined();
+    expect(payload.mimeType).toBe('text/calendar');
+  });
 });

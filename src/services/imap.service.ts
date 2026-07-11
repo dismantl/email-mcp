@@ -110,6 +110,18 @@ function hasAttachments(bodyStructure: unknown): boolean {
   return false;
 }
 
+/**
+ * ImapFlow bodystructure nodes carry the FULL content type in `type`
+ * (e.g. "text/calendar"); there is no separate subtype field. Appending a
+ * subtype fallback produced mangled values like "text/calendar/octet-stream".
+ */
+function nodeMimeType(bs: Record<string, unknown>): string {
+  const rawType = typeof bs.type === 'string' ? bs.type : undefined;
+  if (rawType?.includes('/')) return rawType;
+  const rawSubtype = typeof bs.subtype === 'string' ? bs.subtype : undefined;
+  return `${rawType ?? 'application'}/${rawSubtype ?? 'octet-stream'}`;
+}
+
 function extractAttachments(bodyStructure: unknown): AttachmentMeta[] {
   const attachments: AttachmentMeta[] = [];
   if (!bodyStructure || typeof bodyStructure !== 'object') return attachments;
@@ -119,7 +131,7 @@ function extractAttachments(bodyStructure: unknown): AttachmentMeta[] {
     const params = (bs.dispositionParameters ?? bs.parameters ?? {}) as Record<string, string>;
     attachments.push({
       filename: params.filename ?? params.name ?? 'unnamed',
-      mimeType: `${bs.type ?? 'application'}/${bs.subtype ?? 'octet-stream'}`,
+      mimeType: nodeMimeType(bs),
       size: (bs.size as number) ?? 0,
     });
   }
