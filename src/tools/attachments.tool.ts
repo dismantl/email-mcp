@@ -13,7 +13,12 @@ const TEXTUAL_MIME_TYPES = new Set(['application/json', 'application/xml']);
 
 function isTextualMimeType(mimeType: string): boolean {
   const normalized = mimeType.toLowerCase();
-  return normalized.startsWith('text/') || TEXTUAL_MIME_TYPES.has(normalized);
+  return (
+    normalized.startsWith('text/') ||
+    normalized.endsWith('+json') ||
+    normalized.endsWith('+xml') ||
+    TEXTUAL_MIME_TYPES.has(normalized)
+  );
 }
 
 /**

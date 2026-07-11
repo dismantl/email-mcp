@@ -159,6 +159,36 @@ describe('registerAttachmentTools', () => {
     expect(payload.contentBase64).toBeUndefined();
   });
 
+  it('treats structured-syntax suffixes (+json/+xml) as textual', async () => {
+    const body = '<calendar/>';
+    const server = createServer();
+    const imapService = {
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'invite.xml',
+        mimeType: 'application/soap+xml',
+        size: body.length,
+        contentBase64: Buffer.from(body, 'utf-8').toString('base64'),
+      }),
+    } as unknown as ImapService;
+
+    registerAttachmentTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'download_attachment',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      filename: 'invite.xml',
+      uidValidity: '12345',
+    });
+
+    const payload = JSON.parse(response.content[0].text) as Record<string, unknown>;
+    expect(payload.text).toBe(body);
+    expect(payload.contentBase64).toBeUndefined();
+  });
+
   it('falls back to contentBase64 when a text attachment is not valid UTF-8', async () => {
     // 0xFF 0xFE is not decodable as UTF-8; a lossy decode would emit U+FFFD
     // and lose the original bytes with no recovery path.

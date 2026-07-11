@@ -49,11 +49,16 @@ export const downloadAttachmentOutputSchema = z.object({
   mimeType: z.string(),
   size: z.number(),
   sizeHuman: z.string(),
-  text: z.string().optional().describe('Decoded content for text attachments that are valid UTF-8'),
+  // Exactly one of text/contentBase64 is present (the SDK's object-shaped
+  // outputSchema cannot express the union, so the invariant lives here).
+  text: z
+    .string()
+    .optional()
+    .describe('Decoded content for valid-UTF-8 text attachments; absent when contentBase64 is set'),
   contentBase64: z
     .string()
     .optional()
-    .describe('Base64 content for binary or non-UTF-8 attachments'),
+    .describe('Base64 content for binary or non-UTF-8 attachments; absent when text is set'),
 });
 
 export const getEmailOutputSchema = emailSummarySchema.extend({
