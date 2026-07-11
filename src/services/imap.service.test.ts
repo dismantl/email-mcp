@@ -616,3 +616,48 @@ describe('ImapService', () => {
     });
   });
 });
+
+describe('downloadAttachment', () => {
+  function attachmentBodyStructure() {
+    return {
+      type: 'multipart/mixed',
+      childNodes: [
+        { part: '1', type: 'text/plain' },
+        {
+          part: '2',
+          // ImapFlow reports the FULL content type in `type`; there is no
+          // separate subtype field. The mimeType must pass through unmangled
+          // (regression: "text/calendar/octet-stream").
+          type: 'text/calendar',
+          disposition: 'attachment',
+          dispositionParameters: { filename: 'appointment.ics' },
+          size: 44,
+        },
+      ],
+    };
+  }
+
+  it('preserves the full bodystructure content type in mimeType', async () => {
+    const mockClient = createMockImapClient();
+    const ics = 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR';
+    mockClient.fetchOne = vi.fn().mockResolvedValue({ bodyStructure: attachmentBodyStructure() });
+    async function* icsContent() {
+      yield Buffer.from(ics, 'utf-8');
+    }
+    mockClient.download = vi.fn().mockResolvedValue({ content: icsContent() });
+    const service = new ImapService(createMockConnectionManager(mockClient));
+
+    const result = await service.downloadAttachment(
+      'test',
+      '7',
+      'INBOX',
+      'appointment.ics',
+      12345n,
+    );
+
+    expect(result.mimeType).toBe('text/calendar');
+    expect(result.filename).toBe('appointment.ics');
+    expect(Buffer.from(result.contentBase64, 'base64').toString('utf-8')).toBe(ics);
+    expect(mockClient.download).toHaveBeenCalledWith('7', '2', { uid: true });
+  });
+});
