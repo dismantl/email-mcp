@@ -44,6 +44,18 @@ const attachmentSchema = z.object({
   size: z.number(),
 });
 
+export const downloadAttachmentOutputSchema = z.object({
+  filename: z.string(),
+  mimeType: z.string(),
+  size: z.number(),
+  sizeHuman: z.string(),
+  text: z.string().optional().describe('Decoded content for text attachments that are valid UTF-8'),
+  contentBase64: z
+    .string()
+    .optional()
+    .describe('Base64 content for binary or non-UTF-8 attachments'),
+});
+
 export const getEmailOutputSchema = emailSummarySchema.extend({
   to: z.array(emailAddressSchema),
   cc: z.array(emailAddressSchema).optional(),

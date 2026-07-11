@@ -4,23 +4,24 @@ import registerAttachmentTools from './attachments.tool.js';
 
 type ToolHandler = (params: Record<string, unknown>) => Promise<{
   content: { type: 'text'; text: string }[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }>;
 
 function createServer() {
   return {
-    tool: vi.fn(),
-  } as unknown as McpServer & { tool: ReturnType<typeof vi.fn> };
+    registerTool: vi.fn(),
+  } as unknown as McpServer & { registerTool: ReturnType<typeof vi.fn> };
 }
 
 function getToolCall(server: ReturnType<typeof createServer>, name: string) {
-  const call = server.tool.mock.calls.find(([toolName]) => toolName === name);
+  const call = server.registerTool.mock.calls.find(([toolName]) => toolName === name);
   if (!call) throw new Error(`Tool not registered: ${name}`);
   return call;
 }
 
 function getHandler(server: ReturnType<typeof createServer>, name: string): ToolHandler {
-  return getToolCall(server, name)[4] as ToolHandler;
+  return getToolCall(server, name)[2] as ToolHandler;
 }
 
 describe('registerAttachmentTools', () => {
@@ -37,8 +38,9 @@ describe('registerAttachmentTools', () => {
 
     registerAttachmentTools(server, imapService);
 
-    const schema = getToolCall(server, 'download_attachment')[2] as Record<string, unknown>;
-    expect(schema).toHaveProperty('uidValidity');
+    const config = getToolCall(server, 'download_attachment')[1] as Record<string, unknown>;
+    expect(config.inputSchema).toHaveProperty('uidValidity');
+    expect(config.outputSchema).toBeDefined();
 
     const response = await getHandler(
       server,
@@ -92,6 +94,7 @@ describe('registerAttachmentTools', () => {
     expect(payload.contentBase64).toBe('Y29udGVudA==');
     expect(payload.text).toBeUndefined();
     expect(response.content[0].text).not.toContain('--- Base64 Content ---');
+    expect(response.structuredContent).toEqual(payload);
   });
 
   it('decodes text attachments (e.g. .ics invites) into a text field', async () => {
@@ -124,5 +127,67 @@ describe('registerAttachmentTools', () => {
     expect(payload.text).toBe(ics);
     expect(payload.contentBase64).toBeUndefined();
     expect(payload.mimeType).toBe('text/calendar');
+    expect(response.structuredContent).toEqual(payload);
+  });
+
+  it('handles uppercase text mimetypes case-insensitively', async () => {
+    const server = createServer();
+    const imapService = {
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'notes.txt',
+        mimeType: 'TEXT/PLAIN',
+        size: 5,
+        contentBase64: Buffer.from('hello', 'utf-8').toString('base64'),
+      }),
+    } as unknown as ImapService;
+
+    registerAttachmentTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'download_attachment',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      filename: 'notes.txt',
+      uidValidity: '12345',
+    });
+
+    const payload = JSON.parse(response.content[0].text) as Record<string, unknown>;
+    expect(payload.text).toBe('hello');
+    expect(payload.contentBase64).toBeUndefined();
+  });
+
+  it('falls back to contentBase64 when a text attachment is not valid UTF-8', async () => {
+    // 0xFF 0xFE is not decodable as UTF-8; a lossy decode would emit U+FFFD
+    // and lose the original bytes with no recovery path.
+    const invalidUtf8 = Buffer.from([0xff, 0xfe, 0x41]).toString('base64');
+    const server = createServer();
+    const imapService = {
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'legacy.txt',
+        mimeType: 'text/plain',
+        size: 3,
+        contentBase64: invalidUtf8,
+      }),
+    } as unknown as ImapService;
+
+    registerAttachmentTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'download_attachment',
+    )({
+      account: 'test',
+      id: '42',
+      mailbox: 'INBOX',
+      filename: 'legacy.txt',
+      uidValidity: '12345',
+    });
+
+    const payload = JSON.parse(response.content[0].text) as Record<string, unknown>;
+    expect(payload.contentBase64).toBe(invalidUtf8);
+    expect(payload.text).toBeUndefined();
   });
 });

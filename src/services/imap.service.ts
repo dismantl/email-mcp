@@ -112,8 +112,10 @@ function hasAttachments(bodyStructure: unknown): boolean {
 
 /**
  * ImapFlow bodystructure nodes carry the FULL content type in `type`
- * (e.g. "text/calendar"); there is no separate subtype field. Appending a
- * subtype fallback produced mangled values like "text/calendar/octet-stream".
+ * (e.g. "text/calendar"), so it must pass through unchanged - appending a
+ * subtype produced mangled values like "text/calendar/octet-stream". The
+ * compose-from-parts path below is purely defensive, for nodes that expose a
+ * bare primary type (and a `subtype`, which ImapFlow itself does not emit).
  */
 function nodeMimeType(bs: Record<string, unknown>): string {
   const rawType = typeof bs.type === 'string' ? bs.type : undefined;
