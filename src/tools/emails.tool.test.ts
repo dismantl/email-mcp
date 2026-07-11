@@ -237,6 +237,33 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
+  it('strips markup from format=text output even when bodyText contains raw HTML', async () => {
+    const server = createServer();
+    const html =
+      '<!DOCTYPE html><html><head><style>body { margin: 0; }</style></head>' +
+      '<body><p>We apologize for the wait.</p></body></html>';
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createEmail({ bodyText: html, bodyHtml: html })),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      markRead: false,
+    });
+
+    expect(response.content[0].text).toContain('We apologize for the wait.');
+    expect(response.content[0].text).not.toContain('<html');
+    expect(response.content[0].text).not.toContain('margin: 0');
+  });
+
   it('returns structured output from get_email without changing rendered text', async () => {
     const server = createServer();
     const bodyText = 'x'.repeat(120);
