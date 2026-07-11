@@ -67,11 +67,6 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-/** True when a body that should be plain text is actually an HTML document. */
-function looksLikeHtmlDocument(body: string): boolean {
-  return /<!doctype\s+html|<html[\s>]/i.test(body.slice(0, 512));
-}
-
 /** Removes quoted reply chains and signatures from plain text. */
 function stripReplyChain(text: string): string {
   const lines = text.split('\n');
@@ -109,12 +104,7 @@ function applyBodyFormat(
   if (format === 'full') {
     body = bodyText ?? bodyHtml ?? '(no content)';
   } else {
-    let base = bodyText ?? (bodyHtml ? stripHtml(bodyHtml) : undefined) ?? '(no content)';
-    // Extraction should keep markup out of bodyText, but a text body that is
-    // a whole HTML document must never reach text/stripped output.
-    if (looksLikeHtmlDocument(base)) {
-      base = stripHtml(base);
-    }
+    const base = bodyText ?? (bodyHtml ? stripHtml(bodyHtml) : undefined) ?? '(no content)';
     body = format === 'stripped' ? stripReplyChain(base) : base;
   }
 

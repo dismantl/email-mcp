@@ -237,13 +237,13 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('UIDVALIDITY: 12345');
   });
 
-  it('strips markup from format=text output even when bodyText contains raw HTML', async () => {
+  it('strips markup from format=text output when only bodyHtml is available', async () => {
     const server = createServer();
     const html =
       '<!DOCTYPE html><html><head><style>body { margin: 0; }</style></head>' +
       '<body><p>We apologize for the wait.</p></body></html>';
     const imapService = {
-      getEmail: vi.fn().mockResolvedValue(createEmail({ bodyText: html, bodyHtml: html })),
+      getEmail: vi.fn().mockResolvedValue(createEmail({ bodyText: undefined, bodyHtml: html })),
     } as unknown as ImapService;
 
     registerEmailsTools(server, imapService);
@@ -262,6 +262,34 @@ describe('registerEmailsTools', () => {
     expect(response.content[0].text).toContain('We apologize for the wait.');
     expect(response.content[0].text).not.toContain('<html');
     expect(response.content[0].text).not.toContain('margin: 0');
+  });
+
+  it('preserves literal HTML examples from text/plain bodies', async () => {
+    const server = createServer();
+    const bodyText =
+      'Use this document as a starting point:\n' +
+      '<!DOCTYPE html><html><head><style>body { margin: 0; }</style></head>' +
+      '<body><p>Hello, world!</p></body></html>';
+    const imapService = {
+      getEmail: vi.fn().mockResolvedValue(createEmail({ bodyText })),
+    } as unknown as ImapService;
+
+    registerEmailsTools(server, imapService);
+
+    const response = await getHandler(
+      server,
+      'get_email',
+    )({
+      account: 'test',
+      emailId: '2',
+      mailbox: 'INBOX',
+      format: 'text',
+      markRead: false,
+    });
+
+    expect(response.content[0].text).toContain('<!DOCTYPE html>');
+    expect(response.content[0].text).toContain('<style>body { margin: 0; }</style>');
+    expect(response.content[0].text).toContain('<p>Hello, world!</p>');
   });
 
   it('returns structured output from get_email without changing rendered text', async () => {
