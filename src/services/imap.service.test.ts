@@ -347,6 +347,46 @@ describe('ImapService', () => {
 
       expect(email.bodyText).toContain('We\u2019ve added this feature to your plan.');
     });
+
+    it('extracts text without concatenating attachment contents', async () => {
+      const attachment = Buffer.alloc(1024 * 1024, 0x61);
+      const source = [
+        'Message-ID: <body-test@example.com>',
+        'Subject: Plan update',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/mixed; boundary="b1"',
+        '',
+        '--b1',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        'Please check your plan now.',
+        '--b1',
+        'Content-Type: application/octet-stream',
+        'Content-Disposition: attachment; filename="payload.bin"',
+        'Content-Transfer-Encoding: base64',
+        '',
+        attachment.toString('base64'),
+        '--b1--',
+        '',
+      ].join('\r\n');
+      client.fetchOne.mockResolvedValue(createRawMessage(2, source));
+
+      const originalConcat = Buffer.concat;
+      const concatSpy = vi.spyOn(Buffer, 'concat').mockImplementation((chunks, totalLength) => {
+        if ((totalLength ?? 0) > 512 * 1024) {
+          throw new Error('attachment contents were concatenated');
+        }
+        return originalConcat(chunks, totalLength);
+      });
+
+      try {
+        const email = await service.getEmail('test', '2');
+
+        expect(email.bodyText).toBe('Please check your plan now.');
+      } finally {
+        concatSpy.mockRestore();
+      }
+    });
   });
 
   // -----------------------------------------------------------------------

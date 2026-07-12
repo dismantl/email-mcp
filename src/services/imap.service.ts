@@ -5,7 +5,8 @@
  */
 
 import type { ImapFlow } from 'imapflow';
-import { simpleParser } from 'mailparser';
+import type { AttachmentStream, MessageText } from 'mailparser';
+import { MailParser } from 'mailparser';
 import type { IConnectionManager } from '../connections/types.js';
 import { mcpLog } from '../logging.js';
 import { sanitizeMailboxName, sanitizeSearchQuery } from '../safety/validation.js';
@@ -223,10 +224,48 @@ function messageToEmailMeta(
   };
 }
 
-/** Narrows mailparser body values (string | false | '') to a present body or undefined. */
-function presentBody(value: string | false | undefined): string | undefined {
-  if (!value) return undefined;
+/** Narrows mailparser body values to a non-empty string or undefined. */
+function presentBody(value: string | boolean | undefined): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
   return value;
+}
+
+/** Parse body fields while draining attachments instead of buffering them. */
+async function parseMimeBodies(source: Buffer): Promise<{ bodyText?: string; bodyHtml?: string }> {
+  return new Promise((resolve, reject) => {
+    const parser = new MailParser({
+      skipHtmlToText: true,
+      skipTextToHtml: true,
+      skipTextLinks: true,
+    });
+    let bodyText: string | undefined;
+    let bodyHtml: string | undefined;
+
+    parser.on('data', (data: AttachmentStream | MessageText) => {
+      if (data.type === 'text') {
+        bodyText = presentBody(data.text);
+        bodyHtml = presentBody(data.html);
+        return;
+      }
+
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        data.release();
+      };
+
+      data.content.once('end', release);
+      data.content.once('error', (error: unknown) => {
+        release();
+        parser.destroy(error instanceof Error ? error : new Error(String(error)));
+      });
+      data.content.on('data', () => {});
+    });
+    parser.once('error', reject);
+    parser.once('end', () => resolve({ bodyText, bodyHtml }));
+    parser.end(source);
+  });
 }
 
 async function messageToEmail(
@@ -248,17 +287,10 @@ async function messageToEmail(
 
   if (msg.source && Buffer.isBuffer(msg.source)) {
     try {
-      const parsed = await simpleParser(msg.source, {
-        skipHtmlToText: true,
-        skipTextToHtml: true,
-        skipTextLinks: true,
-        keepCidLinks: true,
-      });
-      bodyText = presentBody(parsed.text);
-      bodyHtml = presentBody(parsed.html);
+      ({ bodyText, bodyHtml } = await parseMimeBodies(msg.source));
     } catch (err) {
-      // Malformed MIME: keep the raw body rather than dropping content; the
-      // text-format HTML guard in the tool layer still protects consumers.
+      // Malformed MIME: keep the raw body rather than dropping content. HTML
+      // fallback stays in bodyHtml so text output still strips its markup.
       await mcpLog(
         'warning',
         'imap',
