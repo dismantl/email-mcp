@@ -5,7 +5,10 @@
  */
 
 import type { ImapFlow } from 'imapflow';
+import type { AttachmentStream, MessageText } from 'mailparser';
+import { MailParser } from 'mailparser';
 import type { IConnectionManager } from '../connections/types.js';
+import { mcpLog } from '../logging.js';
 import { sanitizeMailboxName, sanitizeSearchQuery } from '../safety/validation.js';
 import type {
   AttachmentMeta,
@@ -221,9 +224,52 @@ function messageToEmailMeta(
   };
 }
 
+/** Narrows mailparser body values to a non-empty string or undefined. */
+function presentBody(value: string | boolean | undefined): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  return value;
+}
+
+/** Parse body fields while draining attachments instead of buffering them. */
+async function parseMimeBodies(source: Buffer): Promise<{ bodyText?: string; bodyHtml?: string }> {
+  return new Promise((resolve, reject) => {
+    const parser = new MailParser({
+      skipHtmlToText: true,
+      skipTextToHtml: true,
+      skipTextLinks: true,
+    });
+    let bodyText: string | undefined;
+    let bodyHtml: string | undefined;
+
+    parser.on('data', (data: AttachmentStream | MessageText) => {
+      if (data.type === 'text') {
+        bodyText = presentBody(data.text);
+        bodyHtml = presentBody(data.html);
+        return;
+      }
+
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        data.release();
+      };
+
+      data.content.once('end', release);
+      data.content.once('error', (error: unknown) => {
+        release();
+        parser.destroy(error instanceof Error ? error : new Error(String(error)));
+      });
+      data.content.on('data', () => {});
+    });
+    parser.once('error', reject);
+    parser.once('end', () => resolve({ bodyText, bodyHtml }));
+    parser.end(source);
+  });
+}
+
 async function messageToEmail(
   msg: Record<string, unknown>,
-  client: ImapFlow,
   uid: number,
   uidValidity: bigint | number | string,
 ): Promise<Email> {
@@ -231,38 +277,37 @@ async function messageToEmail(
   const envelope = (msg.envelope ?? {}) as Record<string, unknown>;
   const headers = parseMessageHeaders(msg);
 
-  // Parse full source for body content
+  // Parse the full RFC822 source with a real MIME parser: it selects the
+  // actual text/plain and text/html parts and decodes transfer encodings and
+  // charsets. Part-number heuristics (e.g. downloading part "1") pick the
+  // wrong part for HTML-only or unusually ordered messages, so bodyText must
+  // never be filled that way.
   let bodyText: string | undefined;
   let bodyHtml: string | undefined;
 
   if (msg.source && Buffer.isBuffer(msg.source)) {
-    const raw = msg.source.toString('utf-8');
-    const separator = findHeaderSeparator(raw);
-    if (separator) {
-      const body = raw.slice(separator.index + separator.length);
-      // Simple content type detection
-      const contentType = headers['content-type'] ?? '';
-      if (contentType.includes('text/html')) {
-        bodyHtml = body;
-      } else {
-        bodyText = body;
+    try {
+      ({ bodyText, bodyHtml } = await parseMimeBodies(msg.source));
+    } catch (err) {
+      // Malformed MIME: keep the raw body rather than dropping content. HTML
+      // fallback stays in bodyHtml so text output still strips its markup.
+      await mcpLog(
+        'warning',
+        'imap',
+        `MIME parse failed for uid=${uid}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      const raw = msg.source.toString('utf-8');
+      const separator = findHeaderSeparator(raw);
+      if (separator) {
+        const body = raw.slice(separator.index + separator.length);
+        const contentType = headers['content-type'] ?? '';
+        if (contentType.includes('text/html')) {
+          bodyHtml = body;
+        } else {
+          bodyText = body;
+        }
       }
     }
-  }
-
-  // Try to get text/html parts via download if body parsing was simple
-  try {
-    const textPart = await client.download(String(uid), '1', { uid: true });
-    if (textPart?.content) {
-      const chunks: Buffer[] = [];
-      // eslint-disable-next-line no-restricted-syntax
-      for await (const chunk of textPart.content) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      bodyText = Buffer.concat(chunks).toString('utf-8');
-    }
-  } catch {
-    // Part may not exist
   }
 
   return {
@@ -519,7 +564,6 @@ export default class ImapService {
 
       return await messageToEmail(
         msg as unknown as Record<string, unknown>,
-        client,
         uid,
         currentUidValidity,
       );
@@ -1565,7 +1609,7 @@ export default class ImapService {
       )) {
         const raw = msg as unknown as Record<string, unknown>;
         const uid = raw.uid as number;
-        messages.push(await messageToEmail(raw, client, uid, uidValidity));
+        messages.push(await messageToEmail(raw, uid, uidValidity));
       }
 
       // Sort chronologically

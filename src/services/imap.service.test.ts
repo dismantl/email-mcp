@@ -256,6 +256,140 @@ describe('ImapService', () => {
   });
 
   // -----------------------------------------------------------------------
+  // body extraction
+  // -----------------------------------------------------------------------
+
+  describe('body extraction', () => {
+    function createRawMessage(uid: number, source: string): Record<string, unknown> {
+      return {
+        uid,
+        seq: uid,
+        envelope: {
+          subject: 'Plan update',
+          messageId: '<body-test@example.com>',
+          date: new Date('2026-07-06T10:00:00Z'),
+          from: [{ name: 'Support', address: 'support@example.com' }],
+          to: [{ name: 'AI', address: 'ai@example.com' }],
+        },
+        flags: new Set<string>(),
+        bodyStructure: undefined,
+        source: Buffer.from(source),
+      };
+    }
+
+    it('extracts the text/plain part from multipart/alternative messages', async () => {
+      const source = [
+        'Message-ID: <body-test@example.com>',
+        'Subject: Plan update',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/alternative; boundary="b1"',
+        '',
+        '--b1',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        'Please check your plan now.',
+        '--b1',
+        'Content-Type: text/html; charset=utf-8',
+        '',
+        '<html><body><p>Please check your plan now.</p></body></html>',
+        '--b1--',
+        '',
+      ].join('\r\n');
+      client.fetchOne.mockResolvedValue(createRawMessage(2, source));
+
+      const email = await service.getEmail('test', '2');
+
+      expect(email.bodyText).toContain('Please check your plan now.');
+      expect(email.bodyText).not.toContain('<html');
+      expect(email.bodyText).not.toContain('--b1');
+      expect(email.bodyHtml).toContain('<p>Please check your plan now.</p>');
+    });
+
+    it('leaves bodyText unset for HTML-only messages instead of copying markup into it', async () => {
+      const html =
+        '<!DOCTYPE html><html><head><style>body { margin: 0; }</style></head>' +
+        '<body><p>We apologize for the wait.</p></body></html>';
+      const source = [
+        'Message-ID: <body-test@example.com>',
+        'Subject: Plan update',
+        'MIME-Version: 1.0',
+        'Content-Type: text/html; charset=utf-8',
+        '',
+        html,
+      ].join('\r\n');
+      client.fetchOne.mockResolvedValue(createRawMessage(2, source));
+      // On a real server, part "1" of a single-part HTML message resolves to
+      // the HTML itself — downloading it must not pollute bodyText.
+      async function* htmlPart() {
+        yield Buffer.from(html);
+      }
+      client.download.mockResolvedValue({ content: htmlPart() });
+
+      const email = await service.getEmail('test', '2');
+
+      expect(email.bodyText).toBeUndefined();
+      expect(email.bodyHtml).toContain('We apologize for the wait.');
+    });
+
+    it('decodes quoted-printable text bodies', async () => {
+      const source = [
+        'Message-ID: <body-test@example.com>',
+        'Subject: Plan update',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=utf-8',
+        'Content-Transfer-Encoding: quoted-printable',
+        '',
+        'We=E2=80=99ve added this feature to your plan.',
+      ].join('\r\n');
+      client.fetchOne.mockResolvedValue(createRawMessage(2, source));
+
+      const email = await service.getEmail('test', '2');
+
+      expect(email.bodyText).toContain('We\u2019ve added this feature to your plan.');
+    });
+
+    it('extracts text without concatenating attachment contents', async () => {
+      const attachment = Buffer.alloc(1024 * 1024, 0x61);
+      const source = [
+        'Message-ID: <body-test@example.com>',
+        'Subject: Plan update',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/mixed; boundary="b1"',
+        '',
+        '--b1',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        'Please check your plan now.',
+        '--b1',
+        'Content-Type: application/octet-stream',
+        'Content-Disposition: attachment; filename="payload.bin"',
+        'Content-Transfer-Encoding: base64',
+        '',
+        attachment.toString('base64'),
+        '--b1--',
+        '',
+      ].join('\r\n');
+      client.fetchOne.mockResolvedValue(createRawMessage(2, source));
+
+      const originalConcat = Buffer.concat;
+      const concatSpy = vi.spyOn(Buffer, 'concat').mockImplementation((chunks, totalLength) => {
+        if ((totalLength ?? 0) > 512 * 1024) {
+          throw new Error('attachment contents were concatenated');
+        }
+        return originalConcat(chunks, totalLength);
+      });
+
+      try {
+        const email = await service.getEmail('test', '2');
+
+        expect(email.bodyText).toBe('Please check your plan now.');
+      } finally {
+        concatSpy.mockRestore();
+      }
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // UIDVALIDITY
   // -----------------------------------------------------------------------
 
